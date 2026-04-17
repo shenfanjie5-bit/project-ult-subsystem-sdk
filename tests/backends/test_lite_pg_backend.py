@@ -50,7 +50,7 @@ def test_pg_submit_backend_inserts_commits_and_maps_queue_id() -> None:
     receipt = backend.submit({"ex_type": "Ex-2", "subsystem_id": "subsystem-a"})
 
     assert len(cursor.execute_calls) == 1
-    assert "private_queue_table" in cursor.execute_calls[0][0]
+    assert 'insert into "private_queue_table"' in cursor.execute_calls[0][0]
     assert connection.commits == 1
     assert cursor.closed is True
     assert connection.closed is True
@@ -81,6 +81,22 @@ def test_pg_submit_backend_uses_injected_factory_without_psycopg() -> None:
 
     assert calls == [config]
     assert receipt["transport_ref"] == "7"
+
+
+def test_pg_submit_backend_rejects_unsafe_queue_table_identifier() -> None:
+    cursor = FakeCursor(row=(7,))
+    connection = FakeConnection(cursor)
+    config = SubmitBackendConfig(
+        backend_kind="lite_pg",
+        queue_table='subsystem_submit_queue; drop table "contracts"',
+    )
+
+    with pytest.raises(ValueError, match="queue_table"):
+        PgSubmitBackend(config, connection_factory=lambda received: connection)
+
+    assert cursor.execute_calls == []
+    assert connection.commits == 0
+    assert connection.closed is False
 
 
 def test_pg_submit_backend_requires_lite_pg_config() -> None:

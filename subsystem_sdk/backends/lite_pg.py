@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -10,6 +11,7 @@ from subsystem_sdk.backends.config import SubmitBackendConfig
 from subsystem_sdk.submit.receipt import BackendKind
 
 _DEFAULT_QUEUE_TABLE = "subsystem_submit_queue"
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class PgSubmitBackend:
@@ -26,6 +28,9 @@ class PgSubmitBackend:
             raise ValueError("PgSubmitBackend requires backend_kind='lite_pg'")
         self._config = config
         self._connection_factory = connection_factory
+        self._queue_table_sql = _quote_identifier_path(
+            config.queue_table or _DEFAULT_QUEUE_TABLE
+        )
 
     @property
     def config(self) -> SubmitBackendConfig:
@@ -78,8 +83,11 @@ class PgSubmitBackend:
                 close()
 
     def _execute_insert(self, cursor: Any, payload: Mapping[str, Any]) -> Any:
-        queue_table = self._config.queue_table or _DEFAULT_QUEUE_TABLE
-        sql = f"insert into {queue_table} (payload) values (%s) returning id"
+        sql = (
+            "insert into "
+            + self._queue_table_sql
+            + " (payload) values (%s) returning id"
+        )
         payload_json = json.dumps(dict(payload), sort_keys=True)
 
         cursor.execute(sql, (payload_json,))
@@ -101,3 +109,16 @@ def _extract_queue_id(row: Any) -> Any:
         return row[0]
     except (IndexError, KeyError, TypeError) as exc:
         raise RuntimeError("PG insert row did not include a queue id") from exc
+
+
+def _quote_identifier_path(identifier_path: str) -> str:
+    """Validate and quote a simple table identifier or schema-qualified path."""
+    parts = identifier_path.split(".")
+    if not 1 <= len(parts) <= 2 or not all(
+        _IDENTIFIER_RE.fullmatch(part) for part in parts
+    ):
+        raise ValueError(
+            "SubmitBackendConfig.queue_table must be a simple PostgreSQL "
+            "identifier or schema-qualified identifier"
+        )
+    return ".".join(f'"{part}"' for part in parts)
