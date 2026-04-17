@@ -16,7 +16,17 @@ SUBPACKAGES = (
 )
 
 EXPECTED_EXPORTS = {
-    "base": [],
+    "base": [
+        "SubsystemRegistrationSpec",
+        "RegistrationRegistry",
+        "RegistrationError",
+        "register_subsystem",
+        "get_registered_subsystem",
+        "load_registration_spec",
+        "BaseSubsystemContext",
+        "SubsystemBaseInterface",
+        "BaseSubsystem",
+    ],
     "validate": [
         "ContractsSchemaError",
         "ContractsUnavailableError",
