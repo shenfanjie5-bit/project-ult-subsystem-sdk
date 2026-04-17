@@ -72,26 +72,39 @@ class KafkaCompatibleSubmitBackend(SubmitBackendInterface):
         return self._config
 
     def submit(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
-        payload_bytes = json.dumps(
-            dict(payload),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        key = self._key_from_payload(payload)
+        try:
+            payload_bytes = json.dumps(
+                dict(payload),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            key = self._key_from_payload(payload)
+        except Exception as exc:
+            return _rejected_receipt(exc)
 
         try:
             ack = self._producer.send(self._config.topic or "", payload_bytes, key=key)
         except Exception as exc:
+            return _rejected_receipt(exc)
+
+        try:
+            transport_ref = _transport_ref_from_ack(self._config.topic or "", ack)
+        except Exception as exc:
             return {
-                "accepted": False,
-                "transport_ref": None,
-                "warnings": (),
-                "errors": (f"full_kafka submit failed: {_error_message(exc)}",),
+                "accepted": True,
+                "transport_ref": _unverified_transport_ref(
+                    self._config.topic or "", payload_bytes
+                ),
+                "warnings": (
+                    "full_kafka ack normalization failed after send: "
+                    f"{_error_message(exc)}",
+                ),
+                "errors": (),
             }
 
         return {
             "accepted": True,
-            "transport_ref": _transport_ref_from_ack(self._config.topic or "", ack),
+            "transport_ref": transport_ref,
             "warnings": (),
             "errors": (),
         }
@@ -104,6 +117,23 @@ class KafkaCompatibleSubmitBackend(SubmitBackendInterface):
         if value is None:
             return None
         return str(value)
+
+
+def _rejected_receipt(exc: Exception) -> Mapping[str, Any]:
+    return {
+        "accepted": False,
+        "transport_ref": None,
+        "warnings": (),
+        "errors": (f"full_kafka submit failed: {_error_message(exc)}",),
+    }
+
+
+def _unverified_transport_ref(topic: str, payload_bytes: bytes) -> str:
+    digest = hashlib.sha256()
+    digest.update(topic.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(payload_bytes)
+    return f"kafka:unverified:{digest.hexdigest()[:32]}"
 
 
 def _transport_ref_from_ack(

@@ -13,7 +13,7 @@ from subsystem_sdk.submit import SubmitReceipt, normalize_backend_receipt
 
 
 class FakeProducer:
-    def __init__(self, ack: KafkaBrokerAck | dict[str, Any]) -> None:
+    def __init__(self, ack: Any) -> None:
         self.ack = ack
         self.calls: list[tuple[str, bytes, str | None]] = []
 
@@ -23,7 +23,7 @@ class FakeProducer:
         payload: bytes,
         *,
         key: str | None = None,
-    ) -> KafkaBrokerAck | dict[str, Any]:
+    ) -> Any:
         self.calls.append((topic, payload, key))
         return self.ack
 
@@ -185,6 +185,28 @@ def test_full_kafka_submit_returns_rejected_receipt_on_producer_exception() -> N
         "warnings": (),
         "errors": ("full_kafka submit failed: broker unavailable",),
     }
+
+
+def test_full_kafka_submit_keeps_successful_send_accepted_on_invalid_ack() -> None:
+    producer = FakeProducer(object())
+    backend = KafkaCompatibleSubmitBackend(
+        SubmitBackendConfig(
+            backend_kind="full_kafka",
+            topic="candidate-events",
+        ),
+        producer,
+    )
+
+    receipt = backend.submit({"ex_type": "Ex-1"})
+
+    assert producer.calls == [("candidate-events", b'{"ex_type":"Ex-1"}', None)]
+    assert receipt["accepted"] is True
+    assert str(receipt["transport_ref"]).startswith("kafka:unverified:")
+    assert receipt["warnings"] == (
+        "full_kafka ack normalization failed after send: "
+        "Kafka producer ack must be KafkaBrokerAck or a mapping",
+    )
+    assert receipt["errors"] == ()
 
 
 def test_full_kafka_raw_receipt_normalizes_to_public_submit_receipt() -> None:

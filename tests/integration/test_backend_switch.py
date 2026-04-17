@@ -5,6 +5,7 @@ import sys
 import types
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, ClassVar, Literal
 
 import pytest
@@ -61,7 +62,7 @@ class Ex1Payload(BaseModel):
 
     ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
-    produced_at: str
+    produced_at: datetime
     canonical_entity_id: str | None = None
 
 
@@ -71,7 +72,7 @@ class Ex2Payload(BaseModel):
 
     ex_type: Literal["Ex-2"] = "Ex-2"
     subsystem_id: str
-    produced_at: str
+    produced_at: datetime
     canonical_entity_id: str | None = None
 
 
@@ -81,7 +82,7 @@ class Ex3Payload(BaseModel):
 
     ex_type: Literal["Ex-3"] = "Ex-3"
     subsystem_id: str
-    produced_at: str
+    produced_at: datetime
     canonical_entity_id: str | None = None
 
 
@@ -146,6 +147,21 @@ class FakeKafkaProducer:
     ) -> KafkaBrokerAck:
         self.calls.append((topic, payload, key))
         return KafkaBrokerAck(message_id=f"message-{len(self.calls)}", offset=3)
+
+
+class InvalidAckKafkaProducer:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, str | None]] = []
+
+    def send(
+        self,
+        topic: str,
+        payload: bytes,
+        *,
+        key: str | None = None,
+    ) -> object:
+        self.calls.append((topic, payload, key))
+        return object()
 
 
 class RecordingLookup:
@@ -300,6 +316,63 @@ def test_same_invalid_payload_fails_before_lite_or_full_backend_call() -> None:
     assert lite_receipt.validator_version == full_receipt.validator_version
     assert lite_run.calls() == 0
     assert full_run.calls() == 0
+
+
+def test_full_backend_from_config_returns_receipt_on_serialization_failure() -> None:
+    producer = FakeKafkaProducer()
+    config = SubmitBackendConfig(
+        backend_kind="full_kafka",
+        topic="candidate-events",
+    )
+    payload = _valid_ex2_payload() | {
+        "produced_at": datetime(2026, 4, 18, tzinfo=timezone.utc)
+    }
+
+    def factory(received: SubmitBackendConfig) -> Any:
+        return build_submit_backend(received, kafka_producer=producer)
+
+    receipt = SubmitClient.from_config(config, backend_factory=factory).submit(payload)
+
+    assert producer.calls == []
+    assert receipt.accepted is False
+    assert receipt.backend_kind == "full_kafka"
+    assert receipt.transport_ref is None
+    assert receipt.validator_version == "v-ex2-switch"
+    assert receipt.errors == (
+        "full_kafka submit failed: Object of type datetime is not JSON serializable",
+    )
+
+
+def test_full_backend_from_config_keeps_successful_send_accepted_on_invalid_ack() -> None:
+    producer = InvalidAckKafkaProducer()
+    config = SubmitBackendConfig(
+        backend_kind="full_kafka",
+        topic="candidate-events",
+    )
+    payload = _valid_ex2_payload()
+
+    def factory(received: SubmitBackendConfig) -> Any:
+        return build_submit_backend(received, kafka_producer=producer)
+
+    receipt = SubmitClient.from_config(config, backend_factory=factory).submit(payload)
+
+    assert producer.calls == [
+        (
+            "candidate-events",
+            b'{"ex_type":"Ex-2","produced_at":"2026-04-18T00:00:00Z","subsystem_id":"subsystem-switch"}',
+            None,
+        )
+    ]
+    assert receipt.accepted is True
+    assert receipt.backend_kind == "full_kafka"
+    assert receipt.transport_ref is not None
+    assert receipt.transport_ref.startswith("kafka:unverified:")
+    assert receipt.validator_version == "v-ex2-switch"
+    assert receipt.warnings == (
+        "full_kafka ack normalization failed after send: "
+        "Kafka producer ack must be KafkaBrokerAck or a mapping",
+    )
+    assert receipt.errors == ()
 
 
 def test_base_context_submit_uses_same_caller_for_lite_and_full() -> None:
