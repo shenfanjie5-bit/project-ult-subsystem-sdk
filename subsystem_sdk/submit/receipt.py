@@ -14,8 +14,45 @@ if BACKEND_KINDS != get_args(BackendKind):  # pragma: no cover - import-time gua
     raise RuntimeError("BACKEND_KINDS must match BackendKind")
 
 RESERVED_PRIVATE_KEYS: Final[frozenset[str]] = frozenset(
-    {"pg_queue_id", "kafka_topic", "kafka_offset", "kafka_partition"}
+    {
+        "pg_queue_id",
+        "pg_table",
+        "queue_table",
+        "sql",
+        "kafka_topic",
+        "kafka_offset",
+        "kafka_partition",
+    }
 )
+_BACKEND_RECEIPT_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "accepted",
+        "receipt_id",
+        "backend_kind",
+        "transport_ref",
+        "validator_version",
+        "warnings",
+        "errors",
+    }
+)
+
+
+def _coerce_diagnostics(value: Any, *, field_name: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, bytes):
+        raise TypeError(f"{field_name} must contain strings, not bytes")
+
+    try:
+        coerced = tuple(value)
+    except TypeError as exc:
+        raise TypeError(f"{field_name} must be a sequence of strings") from exc
+
+    if not all(isinstance(item, str) for item in coerced):
+        raise TypeError(f"{field_name} must contain only strings")
+    return coerced
 
 
 class SubmitReceipt(BaseModel):
@@ -30,6 +67,13 @@ class SubmitReceipt(BaseModel):
     validator_version: str
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+
+    @field_validator("warnings", "errors", mode="before")
+    @classmethod
+    def _coerce_diagnostic_fields(
+        cls, value: Any, info: ValidationInfo
+    ) -> tuple[str, ...]:
+        return _coerce_diagnostics(value, field_name=info.field_name)
 
     @field_validator("errors")
     @classmethod
@@ -58,8 +102,8 @@ def normalize_receipt(
     backend_kind: BackendKind,
     transport_ref: str | None,
     validator_version: str,
-    warnings: Sequence[str] = (),
-    errors: Sequence[str] = (),
+    warnings: Sequence[str] | str = (),
+    errors: Sequence[str] | str = (),
     receipt_id: str | None = None,
 ) -> SubmitReceipt:
     """Create the public receipt contract from backend-neutral values."""
@@ -70,6 +114,43 @@ def normalize_receipt(
         backend_kind=backend_kind,
         transport_ref=transport_ref,
         validator_version=validator_version,
-        warnings=tuple(warnings),
-        errors=tuple(errors),
+        warnings=_coerce_diagnostics(warnings, field_name="warnings"),
+        errors=_coerce_diagnostics(errors, field_name="errors"),
+    )
+
+
+def normalize_backend_receipt(
+    raw_receipt: Mapping[str, Any] | SubmitReceipt,
+    *,
+    backend_kind: BackendKind,
+    validator_version: str,
+) -> SubmitReceipt:
+    """Normalize an adapter receipt through the public receipt boundary."""
+
+    if isinstance(raw_receipt, SubmitReceipt):
+        receipt_data = raw_receipt.model_dump(mode="python")
+    elif isinstance(raw_receipt, Mapping):
+        receipt_data = raw_receipt
+    else:
+        raise TypeError("raw_receipt must be a mapping or SubmitReceipt")
+
+    assert_no_private_leak(receipt_data)
+
+    unknown_keys = set(receipt_data).difference(_BACKEND_RECEIPT_KEYS)
+    if unknown_keys:
+        joined = ", ".join(sorted(unknown_keys))
+        raise ValueError(f"unsupported backend receipt field(s): {joined}")
+
+    accepted = receipt_data.get("accepted")
+    if not isinstance(accepted, bool):
+        raise TypeError("backend receipt accepted must be a bool")
+
+    return normalize_receipt(
+        accepted=accepted,
+        receipt_id=receipt_data.get("receipt_id"),
+        backend_kind=backend_kind,
+        transport_ref=receipt_data.get("transport_ref"),
+        validator_version=validator_version,
+        warnings=receipt_data.get("warnings", ()),
+        errors=receipt_data.get("errors", ()),
     )
