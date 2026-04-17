@@ -102,6 +102,13 @@ def test_assert_producer_only_rejects_ex0_non_string_semantic() -> None:
         assert_producer_only(payload)
 
 
+def test_assert_producer_only_rejects_ex0_business_field_without_semantic() -> None:
+    payload = _ex0_payload() | {"business_event": "trade"}
+
+    with pytest.raises(Ex0SemanticError, match="business_event"):
+        assert_producer_only(payload)
+
+
 def test_assert_producer_only_accepts_legacy_ex0_shape_without_ex_type() -> None:
     payload = _ex0_payload()
     payload.pop("ex_type")
