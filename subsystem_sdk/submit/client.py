@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from subsystem_sdk.submit.protocol import SubmitBackendInterface
 from subsystem_sdk.submit.receipt import (
@@ -22,6 +22,17 @@ from subsystem_sdk.validate.preflight import (
     run_entity_preflight,
 )
 from subsystem_sdk.validate.result import ValidationResult
+
+if TYPE_CHECKING:
+    from subsystem_sdk.backends.config import SubmitBackendConfig
+
+
+def _default_backend_factory(
+    config: SubmitBackendConfig,
+) -> SubmitBackendInterface:
+    from subsystem_sdk.backends.factory import build_submit_backend
+
+    return build_submit_backend(config)
 
 
 class SubmitClient:
@@ -44,9 +55,33 @@ class SubmitClient:
     def backend(self) -> SubmitBackendInterface:
         return self._backend
 
+    @classmethod
+    def from_config(
+        cls,
+        config: SubmitBackendConfig,
+        *,
+        backend_factory: Callable[
+            [SubmitBackendConfig], SubmitBackendInterface
+        ] = _default_backend_factory,
+        validator: Callable[[Mapping[str, Any]], ValidationResult] = validate_payload,
+        entity_lookup: EntityRegistryLookup | None = None,
+        preflight_policy: PreflightPolicy = "skip",
+    ) -> "SubmitClient":
+        """Build a submit client from backend config and a backend factory."""
+
+        return cls(
+            backend_factory(config),
+            validator=validator,
+            entity_lookup=entity_lookup,
+            preflight_policy=preflight_policy,
+        )
+
     def submit(self, payload: Mapping[str, Any]) -> SubmitReceipt:
         validation = self._validator(payload)
-        if _should_run_preflight(validation, self._preflight_policy):
+        if (
+            validation.preflight is None
+            and _should_run_preflight(validation, self._preflight_policy)
+        ):
             preflight = run_entity_preflight(
                 payload,
                 lookup=self._entity_lookup,

@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+from subsystem_sdk.backends import SubmitBackendConfig
 from subsystem_sdk.base.runtime import _clear_runtime_for_tests, configure_runtime
 from subsystem_sdk.submit import SubmitClient, SubmitReceipt, submit
 from subsystem_sdk.validate import ValidationResult
@@ -67,6 +68,32 @@ def test_submit_client_does_not_call_backend_when_validation_fails() -> None:
     assert receipt.validator_version == "contracts-v2"
     assert receipt.warnings == ("validator warning",)
     assert receipt.errors == ("missing produced_at",)
+
+
+def test_submit_client_from_config_matches_direct_construction() -> None:
+    payload = {"ex_type": "Ex-2", "subsystem_id": "subsystem-a"}
+    config = SubmitBackendConfig(backend_kind="mock")
+    backend = RecordingBackend()
+
+    def backend_factory(received: SubmitBackendConfig) -> RecordingBackend:
+        assert received is config
+        return backend
+
+    def validator(received: Mapping[str, Any]) -> ValidationResult:
+        assert received is payload
+        return ValidationResult.ok(ex_type="Ex-2", schema_version="contracts-v1")
+
+    client = SubmitClient.from_config(
+        config,
+        backend_factory=backend_factory,
+        validator=validator,
+    )
+    receipt = client.submit(payload)
+
+    assert backend.calls == [payload]
+    assert receipt.accepted is True
+    assert receipt.backend_kind == "mock"
+    assert receipt.validator_version == "contracts-v1"
 
 
 def test_module_submit_uses_configured_runtime() -> None:

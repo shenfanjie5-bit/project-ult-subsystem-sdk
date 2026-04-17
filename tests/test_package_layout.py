@@ -23,6 +23,7 @@ EXPECTED_EXPORTS = {
         "register_subsystem",
         "get_registered_subsystem",
         "load_registration_spec",
+        "load_submit_backend_config",
         "BaseSubsystemContext",
         "RuntimeNotConfiguredError",
         "configure_runtime",
@@ -79,6 +80,7 @@ EXPECTED_EXPORTS = {
         "send_heartbeat",
     ],
     "backends": [
+        "build_submit_backend",
         "KafkaBrokerAck",
         "KafkaCompatibleSubmitBackend",
         "KafkaProducerProtocol",
