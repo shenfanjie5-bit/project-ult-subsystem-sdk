@@ -24,6 +24,8 @@ EXPECTED_EXPORTS = {
         "get_registered_subsystem",
         "load_registration_spec",
         "BaseSubsystemContext",
+        "RuntimeNotConfiguredError",
+        "configure_runtime",
         "SubsystemBaseInterface",
         "BaseSubsystem",
     ],

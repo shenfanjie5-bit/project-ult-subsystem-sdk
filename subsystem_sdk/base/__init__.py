@@ -9,6 +9,7 @@ from subsystem_sdk.base.registration import (
     get_registered_subsystem,
     register_subsystem,
 )
+from subsystem_sdk.base.runtime import RuntimeNotConfiguredError, configure_runtime
 from subsystem_sdk.base.subsystem import BaseSubsystem, SubsystemBaseInterface
 
 __all__ = [
@@ -19,6 +20,8 @@ __all__ = [
     "get_registered_subsystem",
     "load_registration_spec",
     "BaseSubsystemContext",
+    "RuntimeNotConfiguredError",
+    "configure_runtime",
     "SubsystemBaseInterface",
     "BaseSubsystem",
 ]
