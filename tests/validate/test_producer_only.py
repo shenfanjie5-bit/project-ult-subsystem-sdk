@@ -1,6 +1,7 @@
 import pytest
 
 from subsystem_sdk.validate import (
+    EX0_BANNED_SEMANTICS,
     EX0_SEMANTIC,
     INGEST_METADATA_FIELDS,
     PRODUCER_OWNED_REQUIRED,
@@ -78,6 +79,27 @@ def test_assert_producer_only_rejects_missing_required_fields() -> None:
 
 def test_assert_producer_only_accepts_ex0_happy_path() -> None:
     assert_producer_only(_ex0_payload())
+
+
+def test_assert_producer_only_accepts_ex0_explicit_fixed_semantic() -> None:
+    assert_producer_only(_ex0_payload() | {"semantic": EX0_SEMANTIC})
+
+
+@pytest.mark.parametrize("declared_semantic", sorted(EX0_BANNED_SEMANTICS))
+def test_assert_producer_only_rejects_ex0_business_semantic(
+    declared_semantic: str,
+) -> None:
+    payload = _ex0_payload() | {"semantic": declared_semantic}
+
+    with pytest.raises(Ex0SemanticError, match=declared_semantic):
+        assert_producer_only(payload)
+
+
+def test_assert_producer_only_rejects_ex0_non_string_semantic() -> None:
+    payload = _ex0_payload() | {"semantic": ["business_event"]}
+
+    with pytest.raises(Ex0SemanticError, match="business_event"):
+        assert_producer_only(payload)
 
 
 def test_assert_producer_only_accepts_legacy_ex0_shape_without_ex_type() -> None:
