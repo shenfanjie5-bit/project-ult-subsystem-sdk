@@ -72,6 +72,7 @@ EXPECTED_EXPORTS = {
     "backends": [
         "MockSubmitBackend",
         "PgSubmitBackend",
+        "SubmitBackendHeartbeatAdapter",
         "SubmitBackendConfig",
     ],
     "fixtures": [],
