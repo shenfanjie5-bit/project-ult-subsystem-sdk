@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from copy import deepcopy
+from threading import RLock
 from types import MappingProxyType
 from typing import Any
 
@@ -111,39 +112,43 @@ class RegistrationRegistry:
 
     def __init__(self) -> None:
         self._specs: dict[str, SubsystemRegistrationSpec] = {}
+        self._lock = RLock()
 
     def register(self, spec: SubsystemRegistrationSpec) -> None:
-        existing = self._specs.get(spec.subsystem_id)
-        if existing is None:
-            self._specs[spec.subsystem_id] = spec
-            return
+        with self._lock:
+            existing = self._specs.get(spec.subsystem_id)
+            if existing is None:
+                self._specs[spec.subsystem_id] = spec
+                return
 
-        if existing == spec:
-            return
+            if existing == spec:
+                return
 
-        differing_fields = [
-            field_name
-            for field_name in (
-                "version",
-                "domain",
-                "owner",
-                "supported_ex_types",
-                "heartbeat_policy_ref",
-                "capabilities",
+            differing_fields = [
+                field_name
+                for field_name in (
+                    "version",
+                    "domain",
+                    "owner",
+                    "supported_ex_types",
+                    "heartbeat_policy_ref",
+                    "capabilities",
+                )
+                if getattr(existing, field_name) != getattr(spec, field_name)
+            ]
+            fields = ", ".join(differing_fields)
+            raise RegistrationError(
+                "subsystem registration already exists with different metadata: "
+                f"{spec.subsystem_id!r}; differing field(s): {fields}"
             )
-            if getattr(existing, field_name) != getattr(spec, field_name)
-        ]
-        fields = ", ".join(differing_fields)
-        raise RegistrationError(
-            "subsystem registration already exists with different metadata: "
-            f"{spec.subsystem_id!r}; differing field(s): {fields}"
-        )
 
     def get(self, subsystem_id: str) -> SubsystemRegistrationSpec | None:
-        return self._specs.get(subsystem_id)
+        with self._lock:
+            return self._specs.get(subsystem_id)
 
     def clear(self) -> None:
-        self._specs.clear()
+        with self._lock:
+            self._specs.clear()
 
 
 _DEFAULT_REGISTRY = RegistrationRegistry()

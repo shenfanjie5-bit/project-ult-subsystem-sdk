@@ -1,3 +1,7 @@
+import threading
+import time
+from queue import SimpleQueue
+
 import pytest
 from pydantic import ValidationError
 
@@ -138,6 +142,52 @@ def test_registry_duplicate_identity_conflict_raises(
 
     with pytest.raises(RegistrationError, match="subsystem-demo"):
         registry.register(_spec(**{field_name: value}))
+
+
+def test_registry_conflicting_concurrent_registration_raises_once() -> None:
+    class SlowEmptyReadDict(dict[str, SubsystemRegistrationSpec]):
+        def get(  # type: ignore[override]
+            self,
+            key: str,
+            default: SubsystemRegistrationSpec | None = None,
+        ) -> SubsystemRegistrationSpec | None:
+            result = super().get(key, default)
+            if result is None:
+                time.sleep(0.05)
+            return result
+
+    registry = RegistrationRegistry()
+    registry._specs = SlowEmptyReadDict()  # type: ignore[attr-defined]
+    first = _spec(owner="first-owner")
+    second = _spec(owner="second-owner")
+    start = threading.Barrier(3)
+    outcomes: SimpleQueue[object] = SimpleQueue()
+
+    def register(spec: SubsystemRegistrationSpec) -> None:
+        start.wait()
+        try:
+            registry.register(spec)
+        except RegistrationError as exc:
+            outcomes.put(exc)
+        else:
+            outcomes.put("registered")
+
+    threads = [
+        threading.Thread(target=register, args=(first,)),
+        threading.Thread(target=register, args=(second,)),
+    ]
+    for thread in threads:
+        thread.start()
+
+    start.wait()
+    for thread in threads:
+        thread.join(timeout=1)
+
+    assert all(not thread.is_alive() for thread in threads)
+    results = [outcomes.get_nowait(), outcomes.get_nowait()]
+    assert results.count("registered") == 1
+    assert sum(isinstance(result, RegistrationError) for result in results) == 1
+    assert registry.get("subsystem-demo") in (first, second)
 
 
 def test_registry_clear_is_available_for_tests() -> None:
