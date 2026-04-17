@@ -26,6 +26,7 @@ _PRODUCER_OWNED_REQUIRED: Final[Mapping[str, frozenset[str]]] = MappingProxyType
 PRODUCER_OWNED_REQUIRED: Final[Mapping[str, frozenset[str]]] = (
     _PRODUCER_OWNED_REQUIRED
 )
+_EX0_SEMANTIC_FIELD: Final[str] = "semantic"
 
 
 class SemanticsError(ValueError):
@@ -68,13 +69,26 @@ def assert_no_ingest_metadata(payload: Mapping[str, Any]) -> None:
         )
 
 
+def _ex0_semantic_from_payload(payload: Mapping[str, Any]) -> str:
+    declared_semantic = payload.get(_EX0_SEMANTIC_FIELD, EX0_SEMANTIC)
+    if not isinstance(declared_semantic, str):
+        raise Ex0SemanticError(
+            "Ex-0 semantic must be a string; "
+            f"got {type(declared_semantic).__name__}"
+        )
+    return declared_semantic
+
+
 def assert_producer_only(ex_type: str, payload: Mapping[str, Any]) -> None:
-    """Require a supported Ex payload to contain only producer-owned fields."""
+    """Require a supported Ex payload to contain only producer-owned semantics."""
 
     if ex_type not in SUPPORTED_EX_TYPES:
         raise SemanticsError(f"unsupported Ex type: {ex_type!r}")
 
     assert_no_ingest_metadata(payload)
+
+    if ex_type == "Ex-0":
+        assert_ex0_semantic(_ex0_semantic_from_payload(payload))
 
     required_fields = _PRODUCER_OWNED_REQUIRED[ex_type]
     missing_fields = required_fields.difference(payload)
