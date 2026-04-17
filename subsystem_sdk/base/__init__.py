@@ -1,6 +1,9 @@
 """Section 14 base package: context, registration loading, and specs."""
 
-from subsystem_sdk.base.config import load_registration_spec
+from subsystem_sdk.base.config import (
+    load_registration_spec,
+    load_submit_backend_config,
+)
 from subsystem_sdk.base.context import BaseSubsystemContext
 from subsystem_sdk.base.registration import (
     RegistrationError,
@@ -23,6 +26,7 @@ __all__ = [
     "register_subsystem",
     "get_registered_subsystem",
     "load_registration_spec",
+    "load_submit_backend_config",
     "BaseSubsystemContext",
     "RuntimeNotConfiguredError",
     "configure_runtime",

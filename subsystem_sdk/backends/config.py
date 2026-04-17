@@ -23,12 +23,21 @@ class SubmitBackendConfig(BaseModel):
     delivery_timeout_ms: int = Field(default=1000, ge=1)
 
     @model_validator(mode="after")
-    def _validate_full_kafka_topic(self) -> Self:
-        if self.backend_kind == "full_kafka" and (
-            self.topic is None or not self.topic.strip()
-        ):
+    def _validate_backend_fields(self) -> Self:
+        if self.dsn is not None and not self.dsn.strip():
+            raise ValueError("SubmitBackendConfig.dsn cannot be blank")
+        if self.queue_table is not None and not self.queue_table.strip():
+            raise ValueError("SubmitBackendConfig.queue_table cannot be blank")
+        if self.client_id is not None and not self.client_id.strip():
+            raise ValueError("SubmitBackendConfig.client_id cannot be blank")
+
+        if self.backend_kind == "full_kafka" and not _has_text(self.topic):
             raise ValueError(
                 "SubmitBackendConfig.topic is required when "
                 "backend_kind='full_kafka'"
             )
         return self
+
+
+def _has_text(value: str | None) -> bool:
+    return value is not None and bool(value.strip())

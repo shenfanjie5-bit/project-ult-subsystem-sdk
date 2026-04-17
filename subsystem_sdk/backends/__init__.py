@@ -6,11 +6,13 @@ from subsystem_sdk.backends.full_kafka import (
     KafkaCompatibleSubmitBackend,
     KafkaProducerProtocol,
 )
+from subsystem_sdk.backends.factory import build_submit_backend
 from subsystem_sdk.backends.heartbeat import SubmitBackendHeartbeatAdapter
 from subsystem_sdk.backends.lite_pg import PgSubmitBackend
 from subsystem_sdk.backends.mock import MockSubmitBackend
 
 __all__ = [
+    "build_submit_backend",
     "KafkaBrokerAck",
     "KafkaCompatibleSubmitBackend",
     "KafkaProducerProtocol",
