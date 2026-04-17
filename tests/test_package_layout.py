@@ -49,7 +49,16 @@ EXPECTED_EXPORTS = {
         "normalize_receipt",
         "submit",
     ],
-    "heartbeat": [],
+    "heartbeat": [
+        "DEFAULT_HEARTBEAT_POLICY",
+        "HeartbeatBackendInterface",
+        "HeartbeatClient",
+        "HeartbeatPolicy",
+        "HeartbeatState",
+        "HeartbeatStatus",
+        "build_ex0_payload",
+        "send_heartbeat",
+    ],
     "backends": [
         "MockSubmitBackend",
         "PgSubmitBackend",
