@@ -343,7 +343,7 @@ def test_full_backend_from_config_returns_receipt_on_serialization_failure() -> 
     )
 
 
-def test_full_backend_from_config_returns_receipt_on_invalid_ack() -> None:
+def test_full_backend_from_config_keeps_successful_send_accepted_on_invalid_ack() -> None:
     producer = InvalidAckKafkaProducer()
     config = SubmitBackendConfig(
         backend_kind="full_kafka",
@@ -363,13 +363,16 @@ def test_full_backend_from_config_returns_receipt_on_invalid_ack() -> None:
             None,
         )
     ]
-    assert receipt.accepted is False
+    assert receipt.accepted is True
     assert receipt.backend_kind == "full_kafka"
-    assert receipt.transport_ref is None
+    assert receipt.transport_ref is not None
+    assert receipt.transport_ref.startswith("kafka:unverified:")
     assert receipt.validator_version == "v-ex2-switch"
-    assert receipt.errors == (
-        "full_kafka submit failed: Kafka producer ack must be KafkaBrokerAck or a mapping",
+    assert receipt.warnings == (
+        "full_kafka ack normalization failed after send: "
+        "Kafka producer ack must be KafkaBrokerAck or a mapping",
     )
+    assert receipt.errors == ()
 
 
 def test_base_context_submit_uses_same_caller_for_lite_and_full() -> None:
