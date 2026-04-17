@@ -27,8 +27,14 @@ PRODUCER_OWNED_REQUIRED: Final[Mapping[str, frozenset[str]]] = (
     _PRODUCER_OWNED_REQUIRED
 )
 _EX_TYPE_FIELD: Final[str] = "ex_type"
+_EX0_SEMANTIC_FIELD: Final[str] = "semantic"
 _EX0_SCHEMA_MARKERS: Final[frozenset[str]] = frozenset(
     {"heartbeat_at", "last_output_at", "pending_count"}
+)
+_EX0_ALLOWED_PRODUCER_FIELDS: Final[frozenset[str]] = (
+    _PRODUCER_OWNED_REQUIRED["Ex-0"]
+    | _EX0_SCHEMA_MARKERS
+    | frozenset({_EX_TYPE_FIELD, _EX0_SEMANTIC_FIELD})
 )
 _PRODUCED_SCHEMA_MARKERS: Final[frozenset[str]] = frozenset({"produced_at"})
 _PRODUCED_EX_TYPES: Final[frozenset[str]] = frozenset({"Ex-1", "Ex-2", "Ex-3"})
@@ -131,6 +137,23 @@ def _derive_ex_type(payload: Mapping[str, Any]) -> str:
     return ex_type
 
 
+def _assert_ex0_payload_semantic(payload: Mapping[str, Any]) -> None:
+    disallowed_fields = set(payload).difference(_EX0_ALLOWED_PRODUCER_FIELDS)
+    if disallowed_fields:
+        fields = ", ".join(sorted(disallowed_fields))
+        raise Ex0SemanticError(
+            f"Ex-0 producer payload includes non-heartbeat field(s): {fields}"
+        )
+
+    declared_semantic = payload.get(_EX0_SEMANTIC_FIELD, EX0_SEMANTIC)
+    if not isinstance(declared_semantic, str):
+        raise Ex0SemanticError(
+            f"Ex-0 semantic must be {EX0_SEMANTIC!r}; got {declared_semantic!r}"
+        )
+
+    assert_ex0_semantic(declared_semantic)
+
+
 def assert_producer_only(payload: Any, ex_type: str | None = None) -> None:
     """Require a supported Ex payload to contain only producer-owned fields."""
 
@@ -149,6 +172,9 @@ def assert_producer_only(payload: Any, ex_type: str | None = None) -> None:
                 "declared Ex type "
                 f"{explicit_ex_type!r} does not match payload ex_type {payload_ex_type!r}"
             )
+
+    if payload_ex_type == "Ex-0":
+        _assert_ex0_payload_semantic(payload_mapping)
 
     assert_no_ingest_metadata(payload_mapping)
 
