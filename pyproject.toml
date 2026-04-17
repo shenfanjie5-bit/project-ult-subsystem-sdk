@@ -21,7 +21,11 @@ test = [
 include = ["subsystem_sdk*"]
 
 [tool.setuptools.package-data]
-"subsystem_sdk.fixtures" = ["data/*/*.json"]
+"subsystem_sdk.fixtures" = [
+    "data/*/*.json",
+    "templates/reference_subsystem/*.template",
+    "templates/reference_subsystem/<package>/*.template",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"

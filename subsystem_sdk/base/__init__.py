@@ -10,6 +10,10 @@ from subsystem_sdk.base.registration import (
     register_subsystem,
 )
 from subsystem_sdk.base.runtime import RuntimeNotConfiguredError, configure_runtime
+from subsystem_sdk.base.scaffold import (
+    ReferenceSubsystemTemplate,
+    create_reference_subsystem,
+)
 from subsystem_sdk.base.subsystem import BaseSubsystem, SubsystemBaseInterface
 
 __all__ = [
@@ -22,6 +26,8 @@ __all__ = [
     "BaseSubsystemContext",
     "RuntimeNotConfiguredError",
     "configure_runtime",
+    "ReferenceSubsystemTemplate",
+    "create_reference_subsystem",
     "SubsystemBaseInterface",
     "BaseSubsystem",
 ]

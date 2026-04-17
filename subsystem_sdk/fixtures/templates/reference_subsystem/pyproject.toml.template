@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = $distribution_name_toml
+version = $version_toml
+description = $description_toml
+requires-python = ">=3.11"
+dependencies = [
+    "project-ult-subsystem-sdk",
+]
+
+[tool.setuptools.packages.find]
+include = [$package_include_toml]

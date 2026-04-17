@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,14 @@ from subsystem_sdk.base.registration import SubsystemRegistrationSpec
 
 class ConfigLoadError(RuntimeError):
     """Raised when a registration config file cannot be loaded."""
+
+
+def _load_json(path: Path) -> Any:
+    try:
+        with path.open("r", encoding="utf-8") as file_obj:
+            return json.load(file_obj)
+    except json.JSONDecodeError as exc:
+        raise ConfigLoadError(f"invalid JSON registration config: {path}") from exc
 
 
 def _load_toml(path: Path) -> Any:
@@ -57,18 +66,20 @@ def _registration_data(raw_config: Any, path: Path) -> Mapping[str, Any]:
 
 
 def load_registration_spec(path: str | Path) -> SubsystemRegistrationSpec:
-    """Load a subsystem registration spec from TOML or YAML."""
+    """Load a subsystem registration spec from JSON, TOML, or YAML."""
 
     config_path = Path(path)
     suffix = config_path.suffix.lower()
-    if suffix == ".toml":
+    if suffix == ".json":
+        raw_config = _load_json(config_path)
+    elif suffix == ".toml":
         raw_config = _load_toml(config_path)
     elif suffix in {".yaml", ".yml"}:
         raw_config = _load_yaml(config_path)
     else:
         raise ConfigLoadError(
             "unsupported registration config format; "
-            "use .toml, .yaml, or .yml"
+            "use .json, .toml, .yaml, or .yml"
         )
 
     return SubsystemRegistrationSpec.model_validate(

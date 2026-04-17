@@ -26,6 +26,8 @@ EXPECTED_EXPORTS = {
         "BaseSubsystemContext",
         "RuntimeNotConfiguredError",
         "configure_runtime",
+        "ReferenceSubsystemTemplate",
+        "create_reference_subsystem",
         "SubsystemBaseInterface",
         "BaseSubsystem",
     ],
@@ -84,7 +86,13 @@ EXPECTED_EXPORTS = {
         "available_fixture_bundles",
         "load_fixture_bundle",
     ],
-    "testing": [],
+    "testing": [
+        "BackendEvent",
+        "MockBackend",
+        "DEFAULT_SMOKE_BUNDLE_NAMES",
+        "build_mock_context",
+        "run_subsystem_smoke",
+    ],
 }
 
 
