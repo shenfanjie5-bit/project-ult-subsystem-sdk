@@ -11,7 +11,16 @@ from subsystem_sdk.submit.receipt import (
     normalize_backend_receipt,
     normalize_receipt,
 )
-from subsystem_sdk.validate.engine import validate_payload
+from subsystem_sdk.validate.engine import (
+    _apply_preflight,
+    _should_run_preflight,
+    validate_payload,
+)
+from subsystem_sdk.validate.preflight import (
+    EntityRegistryLookup,
+    PreflightPolicy,
+    run_entity_preflight,
+)
 from subsystem_sdk.validate.result import ValidationResult
 
 
@@ -22,9 +31,14 @@ class SubmitClient:
         self,
         backend: SubmitBackendInterface,
         validator: Callable[[Mapping[str, Any]], ValidationResult] = validate_payload,
+        *,
+        entity_lookup: EntityRegistryLookup | None = None,
+        preflight_policy: PreflightPolicy = "skip",
     ) -> None:
         self._backend = backend
         self._validator = validator
+        self._entity_lookup = entity_lookup
+        self._preflight_policy = preflight_policy
 
     @property
     def backend(self) -> SubmitBackendInterface:
@@ -32,6 +46,14 @@ class SubmitClient:
 
     def submit(self, payload: Mapping[str, Any]) -> SubmitReceipt:
         validation = self._validator(payload)
+        if _should_run_preflight(validation, self._preflight_policy):
+            preflight = run_entity_preflight(
+                payload,
+                lookup=self._entity_lookup,
+                policy=self._preflight_policy,
+            )
+            validation = _apply_preflight(validation, preflight)
+
         if validation.is_valid is False:
             return normalize_receipt(
                 accepted=False,

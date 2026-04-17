@@ -13,6 +13,7 @@ from subsystem_sdk.validate.preflight import (
     run_entity_preflight,
 )
 from subsystem_sdk.validate.registry import ValidationHook, ValidatorRegistry
+from subsystem_sdk.validate.report import richer_validation_report
 from subsystem_sdk.validate.result import ValidationResult
 from subsystem_sdk.validate.semantics import (
     EX0_BANNED_SEMANTICS,
@@ -49,6 +50,7 @@ __all__ = [
     "assert_ex0_semantic",
     "assert_no_ingest_metadata",
     "assert_producer_only",
+    "richer_validation_report",
     "run_entity_preflight",
     "validate_payload",
 ]
