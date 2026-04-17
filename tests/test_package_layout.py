@@ -77,7 +77,13 @@ EXPECTED_EXPORTS = {
         "SubmitBackendHeartbeatAdapter",
         "SubmitBackendConfig",
     ],
-    "fixtures": [],
+    "fixtures": [
+        "ContractExample",
+        "ContractExampleBundle",
+        "FixtureLoadError",
+        "available_fixture_bundles",
+        "load_fixture_bundle",
+    ],
     "testing": [],
 }
 

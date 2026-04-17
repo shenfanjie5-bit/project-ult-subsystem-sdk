@@ -1,0 +1,63 @@
+{
+  "bundle_name": "ex2/default",
+  "ex_type": "Ex-2",
+  "notes": "Default Ex-2 producer examples for SDK contract roundtrip tests.",
+  "valid_examples": [
+    {
+      "name": "producer-minimal-a",
+      "payload": {
+        "ex_type": "Ex-2",
+        "subsystem_id": "subsystem-placeholder",
+        "produced_at": "2026-04-17T00:00:00Z"
+      },
+      "notes": "Valid Ex-2 producer payload using placeholder subsystem data."
+    },
+    {
+      "name": "producer-minimal-b",
+      "payload": {
+        "ex_type": "Ex-2",
+        "subsystem_id": "subsystem-placeholder-alt",
+        "produced_at": "2026-04-17T00:01:00Z"
+      },
+      "notes": "Valid Ex-2 producer payload with a second placeholder timestamp."
+    }
+  ],
+  "invalid_examples": [
+    {
+      "name": "ingest-seq-leak",
+      "payload": {
+        "ex_type": "Ex-2",
+        "subsystem_id": "subsystem-placeholder",
+        "produced_at": "2026-04-17T00:00:00Z",
+        "ingest_seq": 10
+      },
+      "notes": "Ingest metadata guard: ingest_seq is owned by ingest and must not appear in producer payloads."
+    },
+    {
+      "name": "missing-subsystem-id",
+      "payload": {
+        "ex_type": "Ex-2",
+        "produced_at": "2026-04-17T00:00:00Z"
+      },
+      "notes": "Producer-owned required field guard: Ex-2 requires subsystem_id."
+    },
+    {
+      "name": "unknown-ex-type",
+      "payload": {
+        "ex_type": "Ex-9",
+        "subsystem_id": "subsystem-placeholder",
+        "produced_at": "2026-04-17T00:00:00Z"
+      },
+      "notes": "Unknown Ex type guard: Ex-9 is not a supported producer payload type."
+    },
+    {
+      "name": "wrong-ex-type-for-produced-shape",
+      "payload": {
+        "ex_type": "Ex-0",
+        "subsystem_id": "subsystem-placeholder",
+        "produced_at": "2026-04-17T00:00:00Z"
+      },
+      "notes": "Ex type mismatch guard: produced_at payloads must not be declared as Ex-0."
+    }
+  ]
+}

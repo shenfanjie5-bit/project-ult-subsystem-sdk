@@ -1,0 +1,109 @@
+{
+  "bundle_name": "ex0/default",
+  "ex_type": "Ex-0",
+  "notes": "Default Ex-0 heartbeat examples for SDK contract roundtrip tests.",
+  "valid_examples": [
+    {
+      "name": "heartbeat-ok",
+      "payload": {
+        "ex_type": "Ex-0",
+        "semantic": "metadata_or_heartbeat",
+        "subsystem_id": "subsystem-placeholder",
+        "version": "0.1.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z",
+        "status": "ok",
+        "pending_count": 0
+      },
+      "notes": "Valid Ex-0 payload with the fixed metadata_or_heartbeat semantic."
+    },
+    {
+      "name": "heartbeat-degraded",
+      "payload": {
+        "ex_type": "Ex-0",
+        "semantic": "metadata_or_heartbeat",
+        "subsystem_id": "subsystem-placeholder-alt",
+        "version": "0.1.1",
+        "heartbeat_at": "2026-04-17T00:01:00Z",
+        "status": "degraded",
+        "last_output_at": "2026-04-17T00:00:30Z",
+        "pending_count": 2
+      },
+      "notes": "Valid Ex-0 heartbeat status payload using placeholder subsystem data."
+    }
+  ],
+  "invalid_examples": [
+    {
+      "name": "ingest-submitted-at-leak",
+      "payload": {
+        "ex_type": "Ex-0",
+        "semantic": "metadata_or_heartbeat",
+        "subsystem_id": "subsystem-placeholder",
+        "version": "0.1.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z",
+        "status": "ok",
+        "submitted_at": "2026-04-17T00:00:01Z"
+      },
+      "notes": "Ingest metadata guard: submitted_at is owned by ingest and must not appear in producer payloads."
+    },
+    {
+      "name": "missing-status",
+      "payload": {
+        "ex_type": "Ex-0",
+        "semantic": "metadata_or_heartbeat",
+        "subsystem_id": "subsystem-placeholder",
+        "version": "0.1.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z"
+      },
+      "notes": "Producer-owned required field guard: Ex-0 requires status."
+    },
+    {
+      "name": "unknown-ex-type",
+      "payload": {
+        "ex_type": "Ex-9",
+        "semantic": "metadata_or_heartbeat",
+        "subsystem_id": "subsystem-placeholder",
+        "version": "0.1.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z",
+        "status": "ok"
+      },
+      "notes": "Unknown Ex type guard: Ex-9 is not a supported producer payload type."
+    },
+    {
+      "name": "wrong-ex-type-for-heartbeat-shape",
+      "payload": {
+        "ex_type": "Ex-1",
+        "semantic": "metadata_or_heartbeat",
+        "subsystem_id": "subsystem-placeholder",
+        "version": "0.1.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z",
+        "status": "ok"
+      },
+      "notes": "Ex type mismatch guard: heartbeat fields must not be declared as Ex-1."
+    },
+    {
+      "name": "business-event-semantic",
+      "payload": {
+        "ex_type": "Ex-0",
+        "semantic": "business_event",
+        "subsystem_id": "subsystem-placeholder",
+        "version": "0.1.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z",
+        "status": "ok"
+      },
+      "notes": "Ex-0 semantic guard: business_event is not the fixed metadata_or_heartbeat semantic."
+    },
+    {
+      "name": "business-event-field",
+      "payload": {
+        "ex_type": "Ex-0",
+        "semantic": "metadata_or_heartbeat",
+        "subsystem_id": "subsystem-placeholder",
+        "version": "0.1.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z",
+        "status": "ok",
+        "business_event": "placeholder-event"
+      },
+      "notes": "Ex-0 semantic guard: business_event is a non-heartbeat field."
+    }
+  ]
+}
