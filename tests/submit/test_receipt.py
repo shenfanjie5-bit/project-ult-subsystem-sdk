@@ -9,6 +9,7 @@ from subsystem_sdk.submit import (
     BackendKind,
     SubmitReceipt,
     assert_no_private_leak,
+    normalize_backend_receipt,
     normalize_receipt,
 )
 
@@ -113,7 +114,15 @@ def test_assert_no_private_leak_allows_public_keys() -> None:
 
 def test_reserved_private_keys_are_fixed() -> None:
     assert RESERVED_PRIVATE_KEYS == frozenset(
-        {"pg_queue_id", "kafka_topic", "kafka_offset", "kafka_partition"}
+        {
+            "pg_queue_id",
+            "pg_table",
+            "queue_table",
+            "sql",
+            "kafka_topic",
+            "kafka_offset",
+            "kafka_partition",
+        }
     )
 
 
@@ -127,3 +136,14 @@ def test_submit_receipt_is_frozen() -> None:
 
     with pytest.raises((ValidationError, TypeError)):
         receipt.accepted = False
+
+
+def test_normalize_backend_receipt_exported_from_submit_package() -> None:
+    receipt = normalize_backend_receipt(
+        {"accepted": True, "transport_ref": "transport-1"},
+        backend_kind="mock",
+        validator_version="v0",
+    )
+
+    assert receipt.backend_kind == "mock"
+    assert receipt.transport_ref == "transport-1"
