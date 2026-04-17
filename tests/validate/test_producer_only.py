@@ -39,6 +39,20 @@ def test_producer_owned_required_has_all_supported_ex_types() -> None:
     assert len(PRODUCER_OWNED_REQUIRED) == 4
 
 
+def test_producer_owned_required_cannot_be_mutated_to_bypass_guards() -> None:
+    payload = {
+        "subsystem_id": "subsystem-a",
+        "version": "1.0.0",
+        "heartbeat_at": "2026-04-17T00:00:00Z",
+    }
+
+    with pytest.raises(TypeError):
+        PRODUCER_OWNED_REQUIRED["Ex-0"] = frozenset()
+
+    with pytest.raises(MissingProducerFieldError, match="status"):
+        assert_producer_only("Ex-0", payload)
+
+
 @pytest.mark.parametrize("field", sorted(INGEST_METADATA_FIELDS))
 @pytest.mark.parametrize("nested", [False, True], ids=["top_level", "nested"])
 def test_assert_no_ingest_metadata_rejects_top_level_and_nested_leaks(
