@@ -72,15 +72,15 @@ class KafkaCompatibleSubmitBackend(SubmitBackendInterface):
         return self._config
 
     def submit(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
-        payload_bytes = json.dumps(
-            dict(payload),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        key = self._key_from_payload(payload)
-
         try:
+            payload_bytes = json.dumps(
+                dict(payload),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            key = self._key_from_payload(payload)
             ack = self._producer.send(self._config.topic or "", payload_bytes, key=key)
+            transport_ref = _transport_ref_from_ack(self._config.topic or "", ack)
         except Exception as exc:
             return {
                 "accepted": False,
@@ -91,7 +91,7 @@ class KafkaCompatibleSubmitBackend(SubmitBackendInterface):
 
         return {
             "accepted": True,
-            "transport_ref": _transport_ref_from_ack(self._config.topic or "", ack),
+            "transport_ref": transport_ref,
             "warnings": (),
             "errors": (),
         }
