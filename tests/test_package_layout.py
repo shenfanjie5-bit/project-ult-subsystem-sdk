@@ -79,6 +79,9 @@ EXPECTED_EXPORTS = {
         "send_heartbeat",
     ],
     "backends": [
+        "KafkaBrokerAck",
+        "KafkaCompatibleSubmitBackend",
+        "KafkaProducerProtocol",
         "MockSubmitBackend",
         "PgSubmitBackend",
         "SubmitBackendHeartbeatAdapter",
