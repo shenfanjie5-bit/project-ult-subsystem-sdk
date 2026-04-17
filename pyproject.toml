@@ -8,10 +8,17 @@ version = "0.1.0"
 description = "Scaffold workspace for subsystem-sdk."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pydantic>=2.6",
+]
 
-[tool.setuptools]
-packages = []
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+include = ["subsystem_sdk*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

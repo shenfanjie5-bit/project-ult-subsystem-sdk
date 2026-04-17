@@ -1,4 +1,5 @@
 # subsystem-sdk
+Implementation has begun — see docs/TASK_BREAKDOWN.md.
 
 This module is scaffold-only.
 
