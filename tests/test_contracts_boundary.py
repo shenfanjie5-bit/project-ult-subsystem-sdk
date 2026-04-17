@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from subsystem_sdk._contracts import SUPPORTED_EX_TYPES, get_ex_schema
+from subsystem_sdk._contracts import SUPPORTED_EX_TYPES, UnknownExTypeError, get_ex_schema
 
 
 ALLOWED_CONTRACTS_IMPORT = Path("subsystem_sdk/_contracts.py")
@@ -41,6 +41,6 @@ def test_supported_ex_types_are_fixed() -> None:
     assert SUPPORTED_EX_TYPES == ("Ex-0", "Ex-1", "Ex-2", "Ex-3")
 
 
-def test_get_ex_schema_is_milestone_placeholder() -> None:
-    with pytest.raises(NotImplementedError, match="populated in milestone-1"):
-        get_ex_schema("Ex-1")
+def test_get_ex_schema_rejects_unknown_type_before_contracts_import() -> None:
+    with pytest.raises(UnknownExTypeError, match="unsupported Ex type"):
+        get_ex_schema("Ex-9")
