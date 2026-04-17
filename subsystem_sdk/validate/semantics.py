@@ -26,6 +26,12 @@ _PRODUCER_OWNED_REQUIRED: Final[Mapping[str, frozenset[str]]] = MappingProxyType
 PRODUCER_OWNED_REQUIRED: Final[Mapping[str, frozenset[str]]] = (
     _PRODUCER_OWNED_REQUIRED
 )
+_EX_TYPE_FIELD: Final[str] = "ex_type"
+_EX0_SCHEMA_MARKERS: Final[frozenset[str]] = frozenset(
+    {"heartbeat_at", "last_output_at", "pending_count"}
+)
+_PRODUCED_SCHEMA_MARKERS: Final[frozenset[str]] = frozenset({"produced_at"})
+_PRODUCED_EX_TYPES: Final[frozenset[str]] = frozenset({"Ex-1", "Ex-2", "Ex-3"})
 
 
 class SemanticsError(ValueError):
@@ -68,18 +74,88 @@ def assert_no_ingest_metadata(payload: Mapping[str, Any]) -> None:
         )
 
 
-def assert_producer_only(ex_type: str, payload: Mapping[str, Any]) -> None:
+def _coerce_payload_mapping(payload: Any) -> Mapping[str, Any]:
+    if isinstance(payload, Mapping):
+        return payload
+
+    model_dump = getattr(payload, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        if isinstance(dumped, Mapping):
+            return dumped
+
+    raise TypeError("producer payload must be a mapping or expose model_dump()")
+
+
+def _extract_payload_ex_type(payload: Mapping[str, Any]) -> str | None:
+    value = payload.get(_EX_TYPE_FIELD)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SemanticsError("producer payload ex_type must be a string")
+    if value not in SUPPORTED_EX_TYPES:
+        raise SemanticsError(f"unsupported Ex type: {value!r}")
+    return value
+
+
+def _infer_ex0_payload(payload: Mapping[str, Any]) -> bool:
+    return bool(set(payload).intersection(_EX0_SCHEMA_MARKERS))
+
+
+def _assert_payload_schema_matches(ex_type: str, payload: Mapping[str, Any]) -> None:
+    has_ex0_shape = _infer_ex0_payload(payload)
+    has_produced_shape = bool(set(payload).intersection(_PRODUCED_SCHEMA_MARKERS))
+
+    if has_ex0_shape and has_produced_shape:
+        raise SemanticsError(
+            "payload mixes Ex-0 heartbeat fields with produced payload fields"
+        )
+    if has_ex0_shape and ex_type != "Ex-0":
+        raise SemanticsError(
+            f"payload schema looks like 'Ex-0' but declared ex_type is {ex_type!r}"
+        )
+    if has_produced_shape and ex_type not in _PRODUCED_EX_TYPES:
+        raise SemanticsError(
+            f"payload schema looks like 'Ex-1/2/3' but declared ex_type is {ex_type!r}"
+        )
+
+
+def _derive_ex_type(payload: Mapping[str, Any]) -> str:
+    ex_type = _extract_payload_ex_type(payload)
+    if ex_type is None and _infer_ex0_payload(payload):
+        ex_type = "Ex-0"
+    if ex_type is None:
+        raise SemanticsError("producer payload must declare ex_type")
+
+    _assert_payload_schema_matches(ex_type, payload)
+    return ex_type
+
+
+def assert_producer_only(payload: Any, ex_type: str | None = None) -> None:
     """Require a supported Ex payload to contain only producer-owned fields."""
 
-    if ex_type not in SUPPORTED_EX_TYPES:
-        raise SemanticsError(f"unsupported Ex type: {ex_type!r}")
+    explicit_ex_type = ex_type
+    if isinstance(payload, str):
+        explicit_ex_type = payload
+        payload = ex_type
 
-    assert_no_ingest_metadata(payload)
+    payload_mapping = _coerce_payload_mapping(payload)
+    payload_ex_type = _derive_ex_type(payload_mapping)
+    if explicit_ex_type is not None:
+        if explicit_ex_type not in SUPPORTED_EX_TYPES:
+            raise SemanticsError(f"unsupported Ex type: {explicit_ex_type!r}")
+        if explicit_ex_type != payload_ex_type:
+            raise SemanticsError(
+                "declared Ex type "
+                f"{explicit_ex_type!r} does not match payload ex_type {payload_ex_type!r}"
+            )
 
-    required_fields = _PRODUCER_OWNED_REQUIRED[ex_type]
-    missing_fields = required_fields.difference(payload)
+    assert_no_ingest_metadata(payload_mapping)
+
+    required_fields = _PRODUCER_OWNED_REQUIRED[payload_ex_type]
+    missing_fields = required_fields.difference(payload_mapping)
     if missing_fields:
         fields = ", ".join(sorted(missing_fields))
         raise MissingProducerFieldError(
-            f"{ex_type} producer payload missing required field(s): {fields}"
+            f"{payload_ex_type} producer payload missing required field(s): {fields}"
         )
