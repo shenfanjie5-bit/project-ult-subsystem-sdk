@@ -6,7 +6,13 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Any, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    ValidationInfo,
+    field_serializer,
+    field_validator,
+)
 
 from subsystem_sdk._contracts import SUPPORTED_EX_TYPES
 
@@ -41,6 +47,16 @@ def _freeze_preflight(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(frozen)
 
 
+def _thaw_preflight(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_preflight(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_thaw_preflight(item) for item in value]
+    if isinstance(value, set | frozenset):
+        return [_thaw_preflight(item) for item in sorted(value, key=repr)]
+    return value
+
+
 class ValidationResult(BaseModel):
     """Stable local validation result returned before submit."""
 
@@ -68,6 +84,14 @@ class ValidationResult(BaseModel):
         if preflight is None:
             return None
         return _freeze_preflight(preflight)
+
+    @field_serializer("preflight")
+    def _serialize_preflight_field(
+        self, preflight: Mapping[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if preflight is None:
+            return None
+        return _thaw_preflight(preflight)
 
     @field_validator("field_errors")
     @classmethod

@@ -52,6 +52,7 @@ EXPECTED_EXPORTS = {
         "assert_ex0_semantic",
         "assert_no_ingest_metadata",
         "assert_producer_only",
+        "richer_validation_report",
         "run_entity_preflight",
         "validate_payload",
     ],

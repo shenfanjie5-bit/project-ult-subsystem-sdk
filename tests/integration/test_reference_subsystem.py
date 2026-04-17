@@ -2,18 +2,28 @@ import importlib
 import json
 import sys
 import types
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import ClassVar, Literal
 
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+import subsystem_sdk.testing.helpers as helpers_module
 from subsystem_sdk.backends import SubmitBackendHeartbeatAdapter
 from subsystem_sdk.backends.config import SubmitBackendConfig
 from subsystem_sdk.backends.lite_pg import PgSubmitBackend
-from subsystem_sdk.base import BaseSubsystem, SubsystemRegistrationSpec
+from subsystem_sdk.base import (
+    BaseSubsystem,
+    BaseSubsystemContext,
+    SubsystemRegistrationSpec,
+)
 from subsystem_sdk.base.scaffold import create_reference_subsystem
+from subsystem_sdk.fixtures import ContractExample, ContractExampleBundle
+from subsystem_sdk.heartbeat import HeartbeatClient
 from subsystem_sdk.testing import MockBackend, run_subsystem_smoke
+from subsystem_sdk.submit import SubmitClient
+from subsystem_sdk.validate import validate_payload
 
 
 class FakeEx0Schema(BaseModel):
@@ -37,6 +47,7 @@ class FakeEx1Schema(BaseModel):
     ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
     produced_at: str
+    canonical_entity_id: str | None = None
 
 
 class FakeEx2Schema(BaseModel):
@@ -105,6 +116,16 @@ class FakePgCursor:
         return self._row
 
 
+class MissingEntityLookup:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+
+    def lookup(self, refs: Iterable[str]) -> Mapping[str, bool]:
+        refs_tuple = tuple(refs)
+        self.calls.append(refs_tuple)
+        return {ref: False for ref in refs_tuple}
+
+
 def _install_fake_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
     module = types.ModuleType("contracts")
     module.EX_PAYLOAD_SCHEMAS = {
@@ -135,6 +156,26 @@ def _import_generated(
     create_reference_subsystem(_registration(), tmp_path, package_name=package_name)
     monkeypatch.syspath_prepend(str(tmp_path))
     return importlib.import_module(package_name)
+
+
+def _ex1_unresolved_bundle(name: str) -> ContractExampleBundle:
+    return ContractExampleBundle(
+        bundle_name=name,
+        ex_type="Ex-1",
+        valid_examples=(
+            ContractExample(
+                name="unresolved-entity-ref",
+                payload={
+                    "ex_type": "Ex-1",
+                    "subsystem_id": "subsystem-placeholder",
+                    "produced_at": "2026-04-18T00:00:00Z",
+                    "canonical_entity_id": "missing-entity",
+                },
+                notes="Valid contract payload with an unresolved entity ref.",
+            ),
+        ),
+        invalid_examples=(),
+    )
 
 
 def test_generated_reference_subsystem_smoke_with_mock_backend(
@@ -216,3 +257,43 @@ def test_generated_reference_context_works_with_base_subsystem_wrapper(
 
     assert receipt.accepted is True
     assert receipt.validator_version == "v-ex2-reference"
+
+
+def test_reference_smoke_records_unresolved_ex1_preflight_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_fake_contracts(monkeypatch)
+    generated = _import_generated(monkeypatch, tmp_path, "reference_e2e_preflight")
+    backend = MockBackend()
+    lookup = MissingEntityLookup()
+    registration = generated.load_registration()
+    real_loader = helpers_module.load_fixture_bundle
+    context = BaseSubsystemContext(
+        registration=registration,
+        submit_client=SubmitClient(
+            backend,
+            entity_lookup=lookup,
+            preflight_policy="warn",
+        ),
+        heartbeat_client=HeartbeatClient(backend),
+        validator=validate_payload,
+    )
+
+    def fake_loader(name: str) -> ContractExampleBundle:
+        if name == "ex1/default":
+            return _ex1_unresolved_bundle(name)
+        return real_loader(name)
+
+    monkeypatch.setattr(helpers_module, "load_fixture_bundle", fake_loader)
+
+    receipts = run_subsystem_smoke(context, bundle_names=("ex1/default",))
+
+    assert len(receipts) == 2
+    assert receipts[1].accepted is True
+    assert receipts[1].errors == ()
+    assert receipts[1].warnings == (
+        "entity preflight found unresolved reference(s): missing-entity",
+    )
+    assert lookup.calls == [("missing-entity",)]
+    assert tuple(event.kind for event in backend.events) == ("heartbeat", "submit")

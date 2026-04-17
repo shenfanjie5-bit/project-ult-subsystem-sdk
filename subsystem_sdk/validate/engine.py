@@ -17,12 +17,21 @@ from subsystem_sdk._contracts import (
 )
 from . import registry as hook_registry
 from . import semantics
+from .preflight import (
+    EntityPreflightResult,
+    EntityRegistryLookup,
+    PreflightPolicy,
+    run_entity_preflight,
+)
 from .result import ExType, ValidationResult
 
 _FALLBACK_EX_TYPE: Final[ExType] = "Ex-0"
 _UNKNOWN_SCHEMA_VERSION: Final[str] = "unknown"
 _UNKNOWN_SCHEMA_VERSION_WARNING: Final[str] = (
     "contracts schema version is unavailable; using 'unknown'"
+)
+_PREFLIGHT_EX_TYPES: Final[frozenset[ExType]] = frozenset(
+    {"Ex-1", "Ex-2", "Ex-3"}
 )
 
 
@@ -141,6 +150,56 @@ def _fail(
     )
 
 
+def _preflight_block_errors(preflight: EntityPreflightResult) -> tuple[str, ...]:
+    refs_text = ", ".join(preflight.unresolved_refs)
+    return (f"entity preflight blocked unresolved reference(s): {refs_text}",)
+
+
+def _should_run_preflight(
+    result: ValidationResult, preflight_policy: PreflightPolicy
+) -> bool:
+    return (
+        result.is_valid
+        and result.ex_type in _PREFLIGHT_EX_TYPES
+        and preflight_policy != "skip"
+    )
+
+
+def _apply_preflight(
+    result: ValidationResult,
+    preflight: EntityPreflightResult,
+) -> ValidationResult:
+    """Merge entity preflight diagnostics into a validation result."""
+
+    preflight_payload = preflight.to_validation_preflight()
+    warnings = result.warnings + preflight.warnings
+
+    if preflight.should_block:
+        return ValidationResult.fail(
+            ex_type=result.ex_type,
+            schema_version=result.schema_version,
+            field_errors=_preflight_block_errors(preflight),
+            warnings=warnings,
+            preflight=preflight_payload,
+        )
+
+    if result.is_valid:
+        return ValidationResult.ok(
+            ex_type=result.ex_type,
+            schema_version=result.schema_version,
+            warnings=warnings,
+            preflight=preflight_payload,
+        )
+
+    return ValidationResult.fail(
+        ex_type=result.ex_type,
+        schema_version=result.schema_version,
+        field_errors=result.field_errors,
+        warnings=warnings,
+        preflight=preflight_payload,
+    )
+
+
 def _assert_schema_metadata_matches(schema: type, ex_type: str) -> None:
     schema_ex_type = _read_model_metadata_ex_type(schema)
     if schema_ex_type is not None and schema_ex_type != ex_type:
@@ -150,7 +209,12 @@ def _assert_schema_metadata_matches(schema: type, ex_type: str) -> None:
         )
 
 
-def validate_payload(payload: Mapping[str, Any] | BaseModel) -> ValidationResult:
+def validate_payload(
+    payload: Mapping[str, Any] | BaseModel,
+    *,
+    entity_lookup: EntityRegistryLookup | None = None,
+    preflight_policy: PreflightPolicy = "skip",
+) -> ValidationResult:
     """Validate an Ex payload against contracts and producer-side guardrails."""
 
     try:
@@ -191,8 +255,17 @@ def validate_payload(payload: Mapping[str, Any] | BaseModel) -> ValidationResult
         )
 
     hook_warnings = hook_registry.run_hooks(ex_type, payload_mapping)
-    return ValidationResult.ok(
+    result = ValidationResult.ok(
         ex_type=ex_type,
         schema_version=schema_version,
         warnings=warnings + hook_warnings,
     )
+    if not _should_run_preflight(result, preflight_policy):
+        return result
+
+    preflight = run_entity_preflight(
+        payload_mapping,
+        lookup=entity_lookup,
+        policy=preflight_policy,
+    )
+    return _apply_preflight(result, preflight)
