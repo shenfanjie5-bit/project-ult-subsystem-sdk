@@ -204,13 +204,10 @@ def test_module_send_heartbeat_uses_configured_runtime() -> None:
             return expected
 
     runtime = Runtime()
-    configure_runtime(runtime)
 
-    try:
+    with configure_runtime(runtime):
         assert send_heartbeat(payload) is expected
         assert runtime.calls == [payload]
-    finally:
-        _clear_runtime_for_tests()
 
 
 def test_heartbeat_client_keeps_ex0_business_semantic_rejection_on_path() -> None:

@@ -1,9 +1,10 @@
-"""Configured SDK runtime used by public package entrypoints."""
+"""Scoped SDK runtime used by public package entrypoints."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from threading import RLock
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Protocol
 
 from subsystem_sdk.heartbeat.payload import HeartbeatStatus
@@ -12,6 +13,10 @@ from subsystem_sdk.submit.receipt import SubmitReceipt
 
 class RuntimeNotConfiguredError(RuntimeError):
     """Raised when public SDK entrypoints are used before runtime wiring."""
+
+
+class RuntimeAlreadyConfiguredError(RuntimeError):
+    """Raised when a scoped runtime binding would replace another runtime."""
 
 
 class SDKRuntime(Protocol):
@@ -27,40 +32,50 @@ class SDKRuntime(Protocol):
         """Send an Ex-0 heartbeat status payload."""
 
 
-_RUNTIME_LOCK = RLock()
-_configured_runtime: SDKRuntime | None = None
+_SCOPED_RUNTIME: ContextVar[SDKRuntime | None] = ContextVar(
+    "subsystem_sdk_runtime",
+    default=None,
+)
 
 
-def configure_runtime(runtime: SDKRuntime) -> None:
-    """Configure the process-local runtime used by public SDK entrypoints."""
+@contextmanager
+def configure_runtime(runtime: SDKRuntime) -> Iterator[SDKRuntime]:
+    """Bind public SDK entrypoints to a runtime for the current execution scope."""
 
-    global _configured_runtime
-    with _RUNTIME_LOCK:
-        _configured_runtime = runtime
+    active_runtime = _SCOPED_RUNTIME.get()
+    if active_runtime is not None and active_runtime is not runtime:
+        raise RuntimeAlreadyConfiguredError(
+            "subsystem_sdk runtime is already configured for this execution "
+            "scope; exit the active configure_runtime(...) scope before "
+            "binding a different runtime"
+        )
+
+    token = _SCOPED_RUNTIME.set(runtime)
+    try:
+        yield runtime
+    finally:
+        _SCOPED_RUNTIME.reset(token)
 
 
 def get_runtime() -> SDKRuntime:
     """Return the configured runtime or fail with a clear setup error."""
 
-    with _RUNTIME_LOCK:
-        runtime = _configured_runtime
-
+    runtime = _SCOPED_RUNTIME.get()
     if runtime is None:
         raise RuntimeNotConfiguredError(
             "subsystem_sdk runtime is not configured; create a "
-            "BaseSubsystemContext and call configure_runtime(context) before "
-            "using submit() or send_heartbeat()"
+            "BaseSubsystemContext and use configure_runtime(context) as a "
+            "scoped context manager before using submit() or send_heartbeat()"
         )
     return runtime
 
 
 def _clear_runtime_for_tests() -> None:
-    global _configured_runtime
-    with _RUNTIME_LOCK:
-        _configured_runtime = None
+    _SCOPED_RUNTIME.set(None)
 
 
 __all__ = [
+    "RuntimeAlreadyConfiguredError",
     "RuntimeNotConfiguredError",
     "SDKRuntime",
     "configure_runtime",

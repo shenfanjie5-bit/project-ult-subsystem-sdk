@@ -89,10 +89,7 @@ def test_module_submit_uses_configured_runtime() -> None:
             return expected
 
     runtime = Runtime()
-    configure_runtime(runtime)
 
-    try:
+    with configure_runtime(runtime):
         assert submit(payload) is expected
         assert runtime.calls == [payload]
-    finally:
-        _clear_runtime_for_tests()
