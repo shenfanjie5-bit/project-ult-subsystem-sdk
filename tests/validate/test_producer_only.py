@@ -31,6 +31,14 @@ def test_producer_owned_required_covers_supported_ex_types() -> None:
     assert set(PRODUCER_OWNED_REQUIRED) == {"Ex-0", "Ex-1", "Ex-2", "Ex-3"}
 
 
+def test_producer_owned_required_cannot_be_mutated_to_disable_checks() -> None:
+    with pytest.raises(TypeError):
+        PRODUCER_OWNED_REQUIRED["Ex-2"] = frozenset({"subsystem_id"})  # type: ignore[index]
+
+    with pytest.raises(MissingProducerFieldError, match="produced_at"):
+        assert_producer_only("Ex-2", {"subsystem_id": "subsystem-a"})
+
+
 @pytest.mark.parametrize("field_name", sorted(INGEST_METADATA_FIELDS))
 def test_assert_producer_only_rejects_top_level_ingest_metadata(
     field_name: str,

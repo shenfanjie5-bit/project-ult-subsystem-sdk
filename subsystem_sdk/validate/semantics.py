@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any, Final
 
 from subsystem_sdk._contracts import SUPPORTED_EX_TYPES
@@ -14,12 +15,17 @@ EX0_BANNED_SEMANTICS: Final[frozenset[str]] = frozenset(
 INGEST_METADATA_FIELDS: Final[frozenset[str]] = frozenset(
     {"submitted_at", "ingest_seq", "layer_b_receipt_id"}
 )
-PRODUCER_OWNED_REQUIRED: Final[dict[str, frozenset[str]]] = {
-    "Ex-0": frozenset({"subsystem_id", "version", "heartbeat_at", "status"}),
-    "Ex-1": frozenset({"subsystem_id", "produced_at"}),
-    "Ex-2": frozenset({"subsystem_id", "produced_at"}),
-    "Ex-3": frozenset({"subsystem_id", "produced_at"}),
-}
+_PRODUCER_OWNED_REQUIRED: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "Ex-0": frozenset({"subsystem_id", "version", "heartbeat_at", "status"}),
+        "Ex-1": frozenset({"subsystem_id", "produced_at"}),
+        "Ex-2": frozenset({"subsystem_id", "produced_at"}),
+        "Ex-3": frozenset({"subsystem_id", "produced_at"}),
+    }
+)
+PRODUCER_OWNED_REQUIRED: Final[Mapping[str, frozenset[str]]] = (
+    _PRODUCER_OWNED_REQUIRED
+)
 
 
 class SemanticsError(ValueError):
@@ -70,7 +76,7 @@ def assert_producer_only(ex_type: str, payload: Mapping[str, Any]) -> None:
 
     assert_no_ingest_metadata(payload)
 
-    required_fields = PRODUCER_OWNED_REQUIRED[ex_type]
+    required_fields = _PRODUCER_OWNED_REQUIRED[ex_type]
     missing_fields = required_fields.difference(payload)
     if missing_fields:
         fields = ", ".join(sorted(missing_fields))
