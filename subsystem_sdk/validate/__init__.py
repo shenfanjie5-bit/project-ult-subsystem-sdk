@@ -6,6 +6,12 @@ from subsystem_sdk._contracts import (
     UnknownExTypeError,
 )
 from subsystem_sdk.validate.engine import validate_payload
+from subsystem_sdk.validate.preflight import (
+    EntityPreflightResult,
+    EntityRegistryLookup,
+    PreflightPolicy,
+    run_entity_preflight,
+)
 from subsystem_sdk.validate.registry import ValidationHook, ValidatorRegistry
 from subsystem_sdk.validate.result import ValidationResult
 from subsystem_sdk.validate.semantics import (
@@ -30,8 +36,11 @@ __all__ = [
     "INGEST_METADATA_FIELDS",
     "PRODUCER_OWNED_REQUIRED",
     "Ex0SemanticError",
+    "EntityPreflightResult",
+    "EntityRegistryLookup",
     "IngestMetadataLeakError",
     "MissingProducerFieldError",
+    "PreflightPolicy",
     "SemanticsError",
     "UnknownExTypeError",
     "ValidationHook",
@@ -40,5 +49,6 @@ __all__ = [
     "assert_ex0_semantic",
     "assert_no_ingest_metadata",
     "assert_producer_only",
+    "run_entity_preflight",
     "validate_payload",
 ]
