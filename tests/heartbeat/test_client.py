@@ -1,9 +1,29 @@
+import sys
+import types
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, ClassVar, Literal
+
+import pytest
+from pydantic import BaseModel, ConfigDict
 
 from subsystem_sdk.heartbeat import HeartbeatClient, send_heartbeat
 from subsystem_sdk.submit import SubmitReceipt
-from subsystem_sdk.validate import ValidationResult
+from subsystem_sdk.validate import EX0_SEMANTIC, ValidationResult
+
+
+class Ex1BusinessPayload(BaseModel):
+    SCHEMA_VERSION: ClassVar[str] = "v-ex1-business"
+    model_config = ConfigDict(extra="forbid")
+
+    ex_type: Literal["Ex-1"] = "Ex-1"
+    subsystem_id: str
+    produced_at: str
+
+
+def _install_ex1_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = types.ModuleType("contracts")
+    module.EX_PAYLOAD_SCHEMAS = {"Ex-1": Ex1BusinessPayload}
+    monkeypatch.setitem(sys.modules, "contracts", module)
 
 
 class RecordingHeartbeatBackend:
@@ -28,7 +48,11 @@ class RecordingHeartbeatBackend:
 
 
 def test_heartbeat_client_validates_before_calling_backend() -> None:
-    payload = {"ex_type": "Ex-0", "subsystem_id": "subsystem-a"}
+    payload = {
+        "ex_type": "Ex-0",
+        "semantic": EX0_SEMANTIC,
+        "subsystem_id": "subsystem-a",
+    }
     backend = RecordingHeartbeatBackend()
 
     def validator(received: Mapping[str, Any]) -> ValidationResult:
@@ -90,10 +114,10 @@ def test_heartbeat_client_preserves_backend_rejection() -> None:
         return ValidationResult.ok(ex_type="Ex-0", schema_version="contracts-v3")
 
     receipt = HeartbeatClient(backend, validator=validator).send_heartbeat(
-        {"ex_type": "Ex-0"}
+        {"ex_type": "Ex-0", "semantic": EX0_SEMANTIC}
     )
 
-    assert backend.calls == [{"ex_type": "Ex-0"}]
+    assert backend.calls == [{"ex_type": "Ex-0", "semantic": EX0_SEMANTIC}]
     assert receipt.accepted is False
     assert receipt.validator_version == "contracts-v3"
     assert receipt.errors == ("backend rejected heartbeat",)
@@ -114,10 +138,49 @@ def test_heartbeat_client_uses_validation_schema_version_for_backend_receipt() -
         return ValidationResult.ok(ex_type="Ex-0", schema_version="contracts-v4")
 
     receipt = HeartbeatClient(backend, validator=validator).send_heartbeat(
-        {"ex_type": "Ex-0"}
+        {"ex_type": "Ex-0", "semantic": EX0_SEMANTIC}
     )
 
     assert receipt.validator_version == "contracts-v4"
+
+
+def test_heartbeat_client_rejects_valid_non_ex0_payload_without_backend_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_ex1_contracts(monkeypatch)
+    backend = RecordingHeartbeatBackend()
+    payload = {
+        "ex_type": "Ex-1",
+        "subsystem_id": "subsystem-a",
+        "produced_at": "2026-04-17T00:00:00Z",
+    }
+
+    receipt = HeartbeatClient(backend).send_heartbeat(payload)
+
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.validator_version == "v-ex1-business"
+    assert any("heartbeat validator result" in error for error in receipt.errors)
+    assert any("heartbeat payload ex_type" in error for error in receipt.errors)
+
+
+def test_heartbeat_client_requires_fixed_ex0_semantic_after_validation() -> None:
+    backend = RecordingHeartbeatBackend()
+    payload = {"ex_type": "Ex-0", "semantic": "business_event"}
+
+    def validator(received: Mapping[str, Any]) -> ValidationResult:
+        assert received is payload
+        return ValidationResult.ok(ex_type="Ex-0", schema_version="contracts-v5")
+
+    receipt = HeartbeatClient(backend, validator=validator).send_heartbeat(payload)
+
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.validator_version == "contracts-v5"
+    assert receipt.errors == (
+        "heartbeat payload semantic must be "
+        f"{EX0_SEMANTIC!r}; got 'business_event'",
+    )
 
 
 def test_module_send_heartbeat_delegates_to_provided_client() -> None:
