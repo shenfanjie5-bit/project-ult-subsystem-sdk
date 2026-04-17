@@ -1,4 +1,5 @@
 import importlib
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -12,10 +13,14 @@ from subsystem_sdk.base import (
 )
 
 
-def _registration() -> SubsystemRegistrationSpec:
+def _registration(
+    *,
+    subsystem_id: str = "subsystem-reference",
+    version: str = "0.1.0",
+) -> SubsystemRegistrationSpec:
     return SubsystemRegistrationSpec(
-        subsystem_id="subsystem-reference",
-        version="0.1.0",
+        subsystem_id=subsystem_id,
+        version=version,
         domain="reference",
         supported_ex_types=["Ex-0", "Ex-1", "Ex-2", "Ex-3"],
         owner="sdk",
@@ -48,6 +53,27 @@ def test_create_reference_subsystem_registration_json_roundtrips(
 
     loaded = load_registration_spec(tmp_path / "registration.json")
     assert loaded == registration
+
+
+def test_create_reference_subsystem_escapes_pyproject_toml_metadata(
+    tmp_path: Path,
+) -> None:
+    subsystem_id = 'subsystem-reference"\ndependencies = ["injected"]\n#'
+    version = '0.1.0"\nscripts = { injected = "pkg:main" }\n#'
+    registration = _registration(subsystem_id=subsystem_id, version=version)
+
+    create_reference_subsystem(registration, tmp_path)
+
+    pyproject = tomllib.loads((tmp_path / "pyproject.toml").read_text("utf-8"))
+    project = pyproject["project"]
+
+    assert project["name"] == "reference-subsystem"
+    assert project["version"] == version
+    assert project["description"] == (
+        f"Reference subsystem skeleton for {subsystem_id}."
+    )
+    assert project["dependencies"] == ["project-ult-subsystem-sdk"]
+    assert "scripts" not in project
 
 
 def test_create_reference_subsystem_generated_package_imports(

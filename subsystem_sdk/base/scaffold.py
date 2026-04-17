@@ -93,16 +93,26 @@ def _registration_json(spec: SubsystemRegistrationSpec) -> str:
     )
 
 
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
 def _template_values(
     spec: SubsystemRegistrationSpec,
     package_name: str,
 ) -> dict[str, str]:
+    distribution_name = package_name.replace("_", "-")
+    description = f"Reference subsystem skeleton for {spec.subsystem_id}."
     return {
-        "distribution_name": package_name.replace("_", "-"),
+        "description_toml": _toml_string(description),
+        "distribution_name": distribution_name,
+        "distribution_name_toml": _toml_string(distribution_name),
+        "package_include_toml": _toml_string(f"{package_name}*"),
         "package_name": package_name,
         "registration_json": _registration_json(spec),
         "subsystem_id": spec.subsystem_id,
         "version": spec.version,
+        "version_toml": _toml_string(spec.version),
     }
 
 
