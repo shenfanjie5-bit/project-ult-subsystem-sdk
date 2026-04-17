@@ -17,7 +17,20 @@ SUBPACKAGES = (
 
 EXPECTED_EXPORTS = {
     "base": [],
-    "validate": ["ValidationResult"],
+    "validate": [
+        "EX0_BANNED_SEMANTICS",
+        "EX0_SEMANTIC",
+        "INGEST_METADATA_FIELDS",
+        "PRODUCER_OWNED_REQUIRED",
+        "Ex0SemanticError",
+        "IngestMetadataLeakError",
+        "MissingProducerFieldError",
+        "SemanticsError",
+        "ValidationResult",
+        "assert_ex0_semantic",
+        "assert_no_ingest_metadata",
+        "assert_producer_only",
+    ],
     "submit": [
         "BACKEND_KINDS",
         "RESERVED_PRIVATE_KEYS",
