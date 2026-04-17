@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+from subsystem_sdk.base.runtime import _clear_runtime_for_tests, configure_runtime
 from subsystem_sdk.submit import SubmitClient, SubmitReceipt, submit
 from subsystem_sdk.validate import ValidationResult
 
@@ -68,7 +69,8 @@ def test_submit_client_does_not_call_backend_when_validation_fails() -> None:
     assert receipt.errors == ("missing produced_at",)
 
 
-def test_module_submit_delegates_to_provided_client() -> None:
+def test_module_submit_uses_configured_runtime() -> None:
+    _clear_runtime_for_tests()
     payload = {"ex_type": "Ex-1"}
     expected = SubmitReceipt(
         accepted=True,
@@ -78,7 +80,7 @@ def test_module_submit_delegates_to_provided_client() -> None:
         validator_version="contracts-v1",
     )
 
-    class Client:
+    class Runtime:
         def __init__(self) -> None:
             self.calls: list[Mapping[str, Any]] = []
 
@@ -86,7 +88,11 @@ def test_module_submit_delegates_to_provided_client() -> None:
             self.calls.append(received)
             return expected
 
-    client = Client()
+    runtime = Runtime()
+    configure_runtime(runtime)
 
-    assert submit(payload, client=client) is expected  # type: ignore[arg-type]
-    assert client.calls == [payload]
+    try:
+        assert submit(payload) is expected
+        assert runtime.calls == [payload]
+    finally:
+        _clear_runtime_for_tests()

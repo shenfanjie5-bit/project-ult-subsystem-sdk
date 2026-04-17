@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from subsystem_sdk.heartbeat.protocol import HeartbeatBackendInterface
+from subsystem_sdk.heartbeat.payload import HeartbeatStatus
 from subsystem_sdk.submit.receipt import (
     SubmitReceipt,
     normalize_backend_receipt,
@@ -106,8 +107,10 @@ class HeartbeatClient:
 
 
 def send_heartbeat(
-    status_payload: Mapping[str, Any], *, client: HeartbeatClient
+    status_payload: HeartbeatStatus | Mapping[str, Any],
 ) -> SubmitReceipt:
-    """Delegate to a caller-provided heartbeat client."""
+    """Send heartbeat status through the configured SDK runtime."""
 
-    return client.send_heartbeat(status_payload)
+    from subsystem_sdk.base.runtime import get_runtime
+
+    return get_runtime().send_heartbeat(status_payload)

@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Literal
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from subsystem_sdk.base.runtime import _clear_runtime_for_tests, configure_runtime
 from subsystem_sdk.heartbeat import HeartbeatClient, send_heartbeat
 from subsystem_sdk.submit import SubmitReceipt
 from subsystem_sdk.validate import EX0_SEMANTIC, ValidationResult
@@ -183,8 +184,9 @@ def test_heartbeat_client_requires_fixed_ex0_semantic_after_validation() -> None
     )
 
 
-def test_module_send_heartbeat_delegates_to_provided_client() -> None:
-    payload = {"ex_type": "Ex-0"}
+def test_module_send_heartbeat_uses_configured_runtime() -> None:
+    _clear_runtime_for_tests()
+    payload = {"status": "healthy"}
     expected = SubmitReceipt(
         accepted=True,
         receipt_id="receipt-1",
@@ -193,7 +195,7 @@ def test_module_send_heartbeat_delegates_to_provided_client() -> None:
         validator_version="contracts-v1",
     )
 
-    class Client:
+    class Runtime:
         def __init__(self) -> None:
             self.calls: list[Mapping[str, Any]] = []
 
@@ -201,10 +203,14 @@ def test_module_send_heartbeat_delegates_to_provided_client() -> None:
             self.calls.append(received)
             return expected
 
-    client = Client()
+    runtime = Runtime()
+    configure_runtime(runtime)
 
-    assert send_heartbeat(payload, client=client) is expected  # type: ignore[arg-type]
-    assert client.calls == [payload]
+    try:
+        assert send_heartbeat(payload) is expected
+        assert runtime.calls == [payload]
+    finally:
+        _clear_runtime_for_tests()
 
 
 def test_heartbeat_client_keeps_ex0_business_semantic_rejection_on_path() -> None:

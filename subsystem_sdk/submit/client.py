@@ -61,7 +61,9 @@ class SubmitClient:
         )
 
 
-def submit(payload: Mapping[str, Any], *, client: SubmitClient) -> SubmitReceipt:
-    """Delegate to a caller-provided submit client."""
+def submit(payload: Mapping[str, Any]) -> SubmitReceipt:
+    """Submit a producer payload through the configured SDK runtime."""
 
-    return client.submit(payload)
+    from subsystem_sdk.base.runtime import get_runtime
+
+    return get_runtime().submit(payload)
