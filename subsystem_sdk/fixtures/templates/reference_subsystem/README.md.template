@@ -1,0 +1,6 @@
+# $package_name
+
+Reference subsystem skeleton for `$subsystem_id`.
+
+The generated package exposes placeholder handlers for Ex-1, Ex-2, and Ex-3,
+plus a context factory that wires SDK clients around caller-provided backends.

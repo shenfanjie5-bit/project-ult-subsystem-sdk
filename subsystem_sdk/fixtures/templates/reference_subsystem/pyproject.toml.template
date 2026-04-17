@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "$distribution_name"
+version = "$version"
+description = "Reference subsystem skeleton for $subsystem_id."
+requires-python = ">=3.11"
+dependencies = [
+    "project-ult-subsystem-sdk",
+]
+
+[tool.setuptools.packages.find]
+include = ["$package_name*"]

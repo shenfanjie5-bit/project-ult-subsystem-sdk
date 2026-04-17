@@ -1,0 +1,34 @@
+"""Runtime wiring for the generated reference subsystem."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from pathlib import Path
+from typing import Any
+
+from subsystem_sdk.base import BaseSubsystemContext, load_registration_spec
+from subsystem_sdk.heartbeat import HeartbeatBackendInterface, HeartbeatClient
+from subsystem_sdk.submit import SubmitBackendInterface, SubmitClient
+from subsystem_sdk.validate import ValidationResult, validate_payload
+
+REGISTRATION_PATH = Path(__file__).resolve().parent.parent / "registration.json"
+
+
+def load_registration():
+    return load_registration_spec(REGISTRATION_PATH)
+
+
+def build_context(
+    submit_backend: SubmitBackendInterface,
+    heartbeat_backend: HeartbeatBackendInterface | None = None,
+    *,
+    validator: Callable[[Mapping[str, Any]], ValidationResult] = validate_payload,
+) -> BaseSubsystemContext:
+    heartbeat = heartbeat_backend if heartbeat_backend is not None else submit_backend
+    registration = load_registration()
+    return BaseSubsystemContext(
+        registration=registration,
+        submit_client=SubmitClient(submit_backend, validator=validator),
+        heartbeat_client=HeartbeatClient(heartbeat, validator=validator),
+        validator=validator,
+    )

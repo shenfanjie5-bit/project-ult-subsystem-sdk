@@ -1,0 +1,22 @@
+"""Placeholder handlers for generated reference subsystem tests."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+
+def _copy_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return dict(payload)
+
+
+def example_handler_ex1(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _copy_payload(payload)
+
+
+def example_handler_ex2(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _copy_payload(payload)
+
+
+def example_handler_ex3(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _copy_payload(payload)

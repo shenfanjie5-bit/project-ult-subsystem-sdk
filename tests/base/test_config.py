@@ -59,11 +59,33 @@ queue_table = "private_queue"
 
 
 def test_load_registration_spec_rejects_unsupported_suffix(tmp_path: Path) -> None:
-    config_path = tmp_path / "registration.json"
+    config_path = tmp_path / "registration.ini"
     config_path.write_text("{}", encoding="utf-8")
 
-    with pytest.raises(ConfigLoadError, match=".toml"):
+    with pytest.raises(ConfigLoadError, match=".json"):
         load_registration_spec(config_path)
+
+
+def test_load_registration_spec_from_json(tmp_path: Path) -> None:
+    config_path = tmp_path / "registration.json"
+    config_path.write_text(
+        """
+{
+  "subsystem_id": "subsystem-demo",
+  "version": "0.1.0",
+  "domain": "demo",
+  "supported_ex_types": ["Ex-0", "Ex-1"],
+  "owner": "sdk",
+  "heartbeat_policy_ref": "default"
+}
+""",
+        encoding="utf-8",
+    )
+
+    spec = load_registration_spec(config_path)
+
+    assert spec.subsystem_id == "subsystem-demo"
+    assert spec.supported_ex_types == ("Ex-0", "Ex-1")
 
 
 def test_load_registration_spec_rejects_non_mapping_config(tmp_path: Path) -> None:
