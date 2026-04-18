@@ -5,22 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import Any, Literal
 
+from subsystem_sdk._json import freeze_json_like
 from subsystem_sdk.backends import MockSubmitBackend
-
-
-def _freeze_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze_value(item) for key, item in value.items()}
-        )
-    if isinstance(value, list | tuple):
-        return tuple(_freeze_value(item) for item in value)
-    if isinstance(value, set | frozenset):
-        return frozenset(_freeze_value(item) for item in value)
-    return deepcopy(value)
 
 
 @dataclass(frozen=True)
@@ -63,7 +51,7 @@ class MockBackend(MockSubmitBackend):
 
     def submit(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         self._events.append(
-            BackendEvent(kind="submit", payload=_freeze_value(dict(payload)))
+            BackendEvent(kind="submit", payload=freeze_json_like(dict(payload)))
         )
         return super().submit(payload)
 
@@ -71,7 +59,7 @@ class MockBackend(MockSubmitBackend):
         copied_payload = deepcopy(dict(ex0_payload))
         self._heartbeat_payloads.append(copied_payload)
         self._events.append(
-            BackendEvent(kind="heartbeat", payload=_freeze_value(copied_payload))
+            BackendEvent(kind="heartbeat", payload=freeze_json_like(copied_payload))
         )
         receipt: dict[str, Any] = {
             "accepted": self._accepted,

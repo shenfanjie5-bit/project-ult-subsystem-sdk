@@ -58,6 +58,45 @@ def test_normalize_backend_receipt_rejects_unknown_adapter_fields() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("raw_receipt", "backend_kind", "private_field"),
+    (
+        (
+            {
+                "accepted": True,
+                "transport_ref": "42",
+                "pg_queue_id": 42,
+                "pg_table": "subsystem_submit_queue",
+            },
+            "lite_pg",
+            "pg_queue_id",
+        ),
+        (
+            {
+                "accepted": True,
+                "transport_ref": "kafka:abc",
+                "kafka_topic": "candidate-events",
+                "kafka_partition": 0,
+                "kafka_offset": 12,
+            },
+            "full_kafka",
+            "kafka_topic",
+        ),
+    ),
+)
+def test_normalize_backend_receipt_rejects_transport_private_responses(
+    raw_receipt: dict[str, object],
+    backend_kind: str,
+    private_field: str,
+) -> None:
+    with pytest.raises(ValueError, match=private_field):
+        normalize_backend_receipt(
+            raw_receipt,
+            backend_kind=backend_kind,  # type: ignore[arg-type]
+            validator_version="contracts-v1",
+        )
+
+
 def test_submit_receipt_model_rejects_private_extra_fields() -> None:
     with pytest.raises(ValidationError):
         SubmitReceipt.model_validate(

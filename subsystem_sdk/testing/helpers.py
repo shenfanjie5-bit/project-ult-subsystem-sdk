@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from copy import deepcopy
 from typing import Any, Final
 
+from subsystem_sdk._json import copy_json_like
 from subsystem_sdk.base import BaseSubsystemContext, SubsystemRegistrationSpec
 from subsystem_sdk.fixtures import load_fixture_bundle
 from subsystem_sdk.heartbeat import HeartbeatClient
@@ -20,16 +20,6 @@ DEFAULT_SMOKE_BUNDLE_NAMES: Final[tuple[str, ...]] = (
     "ex3/default",
 )
 _REQUIRED_SMOKE_EX_TYPES: Final[tuple[str, ...]] = ("Ex-0", "Ex-1", "Ex-2", "Ex-3")
-
-
-def _copy_json_like(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _copy_json_like(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_copy_json_like(item) for item in value]
-    if isinstance(value, set | frozenset):
-        return [_copy_json_like(item) for item in sorted(value, key=repr)]
-    return deepcopy(value)
 
 
 def _require_smoke_support(registration: SubsystemRegistrationSpec) -> None:
@@ -51,7 +41,7 @@ def _smoke_payload(
     payload: Mapping[str, Any],
     registration: SubsystemRegistrationSpec,
 ) -> dict[str, Any]:
-    copied = _copy_json_like(payload)
+    copied = copy_json_like(payload)
     if not isinstance(copied, dict):
         raise TypeError("fixture valid example payload must be a mapping")
     copied["subsystem_id"] = registration.subsystem_id

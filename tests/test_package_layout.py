@@ -110,6 +110,20 @@ def test_version() -> None:
     assert subsystem_sdk.__version__ == "0.1.0"
 
 
+def test_root_package_exports_preflight_api() -> None:
+    assert subsystem_sdk.EntityPreflightResult.__name__ == "EntityPreflightResult"
+    assert hasattr(subsystem_sdk.EntityRegistryLookup, "lookup")
+    assert subsystem_sdk.PreflightPolicy
+    assert callable(subsystem_sdk.run_entity_preflight)
+    assert subsystem_sdk.__all__ == [
+        "__version__",
+        "EntityPreflightResult",
+        "EntityRegistryLookup",
+        "PreflightPolicy",
+        "run_entity_preflight",
+    ]
+
+
 @pytest.mark.parametrize("subpackage", SUBPACKAGES)
 def test_import_subpackage(subpackage: str) -> None:
     module = importlib.import_module(f"subsystem_sdk.{subpackage}")

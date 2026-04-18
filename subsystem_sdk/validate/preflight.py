@@ -12,7 +12,7 @@ PreflightPolicy = Literal["warn", "block", "skip"]
 _PREFLIGHT_POLICIES: Final[frozenset[str]] = frozenset({"warn", "block", "skip"})
 _EX_TYPE_FIELD: Final[str] = "ex_type"
 _EX0_TYPE: Final[str] = "Ex-0"
-_PREFLIGHT_EX_TYPES: Final[frozenset[str]] = frozenset({"Ex-1", "Ex-2", "Ex-3"})
+PREFLIGHT_EX_TYPES: Final[frozenset[str]] = frozenset({"Ex-1", "Ex-2", "Ex-3"})
 _EX0_SCHEMA_MARKERS: Final[frozenset[str]] = frozenset(
     {"heartbeat_at", "last_output_at", "pending_count"}
 )
@@ -104,10 +104,12 @@ def _as_mapping(payload: Mapping[str, Any] | BaseModel) -> Mapping[str, Any] | N
     return None
 
 
-def _identify_preflight_ex_type(payload: Mapping[str, Any]) -> str | None:
+def identify_preflight_ex_type(payload: Mapping[str, Any]) -> str | None:
+    """Return the payload Ex type relevant to entity preflight, if recognized."""
+
     ex_type = payload.get(_EX_TYPE_FIELD)
     if isinstance(ex_type, str):
-        if ex_type == _EX0_TYPE or ex_type in _PREFLIGHT_EX_TYPES:
+        if ex_type == _EX0_TYPE or ex_type in PREFLIGHT_EX_TYPES:
             return ex_type
         return None
 
@@ -153,11 +155,24 @@ def _scan_for_entity_refs(value: Any, refs: list[str], seen: set[str]) -> None:
             _scan_for_entity_refs(item, refs, seen)
 
 
-def _extract_entity_refs(payload: Mapping[str, Any]) -> tuple[str, ...]:
+def extract_entity_refs(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Extract entity reference values using the shared preflight scan policy."""
+
     refs: list[str] = []
     seen: set[str] = set()
     _scan_for_entity_refs(payload, refs, seen)
     return tuple(refs)
+
+
+def should_run_entity_preflight(
+    *,
+    is_valid: bool,
+    ex_type: str,
+    policy: PreflightPolicy,
+) -> bool:
+    """Return whether an already validated payload should run entity preflight."""
+
+    return is_valid and ex_type in PREFLIGHT_EX_TYPES and policy != "skip"
 
 
 def _skip_result(warning: str) -> EntityPreflightResult:
@@ -190,10 +205,10 @@ def run_entity_preflight(
             "entity preflight skipped: payload is not a mapping or Pydantic BaseModel"
         )
 
-    ex_type = _identify_preflight_ex_type(payload_mapping)
+    ex_type = identify_preflight_ex_type(payload_mapping)
     if ex_type == _EX0_TYPE:
         return _skip_result("entity preflight skipped for Ex-0 heartbeat payload")
-    if ex_type not in _PREFLIGHT_EX_TYPES:
+    if ex_type not in PREFLIGHT_EX_TYPES:
         return _skip_result(
             "entity preflight skipped: payload is not a recognized Ex-1/Ex-2/Ex-3 "
             "payload"
@@ -203,7 +218,7 @@ def run_entity_preflight(
     if lookup is None:
         return _skip_result("entity preflight skipped: no lookup channel provided")
 
-    refs = _extract_entity_refs(payload_mapping)
+    refs = extract_entity_refs(payload_mapping)
     if not refs:
         return EntityPreflightResult(
             checked=True,
@@ -222,15 +237,33 @@ def run_entity_preflight(
             "entity preflight skipped: lookup channel returned a non-mapping result"
         )
 
-    unresolved_refs = tuple(ref for ref in refs if not bool(lookup_result.get(ref)))
-    warnings: tuple[str, ...] = ()
+    unresolved: list[str] = []
+    malformed: list[str] = []
+    for ref in refs:
+        resolved = lookup_result.get(ref)
+        if resolved is True:
+            continue
+        unresolved.append(ref)
+        if resolved is not None and not isinstance(resolved, bool):
+            malformed.append(ref)
+
+    unresolved_refs = tuple(unresolved)
+    warnings_list: list[str] = []
+    if malformed:
+        refs_text = ", ".join(malformed)
+        warnings_list.append(
+            "entity preflight lookup returned non-bool resolution value(s) "
+            f"for reference(s): {refs_text}"
+        )
     if unresolved_refs:
         refs_text = ", ".join(unresolved_refs)
-        warnings = (f"entity preflight found unresolved reference(s): {refs_text}",)
+        warnings_list.append(
+            f"entity preflight found unresolved reference(s): {refs_text}"
+        )
 
     return EntityPreflightResult(
         checked=True,
         unresolved_refs=unresolved_refs,
-        warnings=warnings,
+        warnings=tuple(warnings_list),
         policy=effective_policy,
     )

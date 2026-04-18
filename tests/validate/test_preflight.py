@@ -33,6 +33,11 @@ class MissingRefLookup:
         return {"known-entity": True}
 
 
+class MalformedLookup:
+    def lookup(self, refs: Iterable[str]) -> Mapping[str, object]:
+        return {ref: "false" for ref in refs}
+
+
 class RaisingLookup:
     def lookup(self, refs: Iterable[str]) -> Mapping[str, bool]:
         raise RuntimeError("registry unavailable")
@@ -187,6 +192,18 @@ def test_run_entity_preflight_missing_lookup_result_is_unresolved() -> None:
     assert result.checked is True
     assert result.unresolved_refs == ("missing-entity",)
     assert result.warnings
+
+
+def test_run_entity_preflight_non_bool_lookup_result_is_unresolved_in_block_mode() -> None:
+    payload = _produced_payload() | {"entity_ref": "missing-entity"}
+
+    result = run_entity_preflight(payload, lookup=MalformedLookup(), policy="block")
+
+    assert result.checked is True
+    assert result.unresolved_refs == ("missing-entity",)
+    assert result.should_block is True
+    assert any("non-bool" in warning for warning in result.warnings)
+    assert any("unresolved" in warning for warning in result.warnings)
 
 
 def test_run_entity_preflight_extracts_refs_in_first_seen_order_only() -> None:

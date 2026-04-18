@@ -14,6 +14,15 @@ from typing import Final
 from subsystem_sdk.base.registration import SubsystemRegistrationSpec
 
 _PACKAGE_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_PEP440_VERSION_RE: Final[re.Pattern[str]] = re.compile(
+    r"^v?"
+    r"(?:(?:[0-9]+!)?[0-9]+(?:\.[0-9]+)*)"
+    r"(?:(?:a|b|c|rc|alpha|beta|pre|preview)[0-9]+)?"
+    r"(?:(?:\.post[0-9]+)|(?:-[0-9]+))?"
+    r"(?:\.dev[0-9]+)?"
+    r"(?:\+[a-z0-9]+(?:[-_.][a-z0-9]+)*)?$",
+    re.IGNORECASE,
+)
 _TEMPLATE_SUFFIX: Final[str] = ".template"
 _PACKAGE_PLACEHOLDER: Final[str] = "<package>"
 _TEMPLATE_PATHS: Final[tuple[tuple[str, ...], ...]] = (
@@ -23,6 +32,7 @@ _TEMPLATE_PATHS: Final[tuple[tuple[str, ...], ...]] = (
     (_PACKAGE_PLACEHOLDER, "__init__.py.template"),
     (_PACKAGE_PLACEHOLDER, "handlers.py.template"),
     (_PACKAGE_PLACEHOLDER, "runtime.py.template"),
+    (_PACKAGE_PLACEHOLDER, "smoke.py.template"),
 )
 
 
@@ -40,6 +50,14 @@ def _validate_package_name(package_name: str) -> None:
     if not _PACKAGE_NAME_RE.fullmatch(package_name) or keyword.iskeyword(package_name):
         raise ValueError(
             "package_name must be a valid, non-keyword Python identifier"
+        )
+
+
+def _validate_package_version(version: str) -> None:
+    if not _PEP440_VERSION_RE.fullmatch(version):
+        raise ValueError(
+            "spec.version must be valid PEP 440 package metadata before "
+            "rendering pyproject.toml"
         )
 
 
@@ -101,6 +119,7 @@ def _template_values(
     spec: SubsystemRegistrationSpec,
     package_name: str,
 ) -> dict[str, str]:
+    _validate_package_version(spec.version)
     distribution_name = package_name.replace("_", "-")
     description = f"Reference subsystem skeleton for {spec.subsystem_id}."
     return {

@@ -17,7 +17,11 @@ from subsystem_sdk.backends import (
     SubmitBackendHeartbeatAdapter,
     build_submit_backend,
 )
-from subsystem_sdk.base import BaseSubsystemContext, SubsystemRegistrationSpec
+from subsystem_sdk.base import (
+    BaseSubsystemContext,
+    SubsystemRegistrationSpec,
+    load_submit_backend_config,
+)
 from subsystem_sdk.heartbeat import HeartbeatClient
 from subsystem_sdk.submit import SubmitClient, SubmitReceipt
 from subsystem_sdk.validate import ValidationResult, registry, validate_payload
@@ -373,6 +377,35 @@ def test_full_backend_from_config_keeps_successful_send_accepted_on_invalid_ack(
         "Kafka producer ack must be KafkaBrokerAck or a mapping",
     )
     assert receipt.errors == ()
+
+
+def test_full_backend_config_file_builds_client_through_documented_factory_path(
+    tmp_path,
+) -> None:
+    config_path = tmp_path / "full-backend.toml"
+    config_path.write_text(
+        """
+[backend]
+backend_kind = "full_kafka"
+topic = "candidate-events"
+client_id = "subsystem-switch"
+""",
+        encoding="utf-8",
+    )
+    producer = FakeKafkaProducer()
+    config = load_submit_backend_config(config_path)
+
+    def factory(received: SubmitBackendConfig) -> Any:
+        assert received is config
+        return build_submit_backend(received, kafka_producer=producer)
+
+    receipt = SubmitClient.from_config(config, backend_factory=factory).submit(
+        _valid_ex2_payload()
+    )
+
+    assert receipt.accepted is True
+    assert receipt.backend_kind == "full_kafka"
+    assert producer.calls
 
 
 def test_base_context_submit_uses_same_caller_for_lite_and_full() -> None:

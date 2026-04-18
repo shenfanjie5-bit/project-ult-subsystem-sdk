@@ -10,7 +10,6 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 import subsystem_sdk.testing.helpers as helpers_module
-from subsystem_sdk.backends import SubmitBackendHeartbeatAdapter
 from subsystem_sdk.backends.config import SubmitBackendConfig
 from subsystem_sdk.backends.lite_pg import PgSubmitBackend
 from subsystem_sdk.base import (
@@ -216,10 +215,7 @@ def test_generated_reference_subsystem_switches_to_lite_without_smoke_api_change
         SubmitBackendConfig(backend_kind="lite_pg", queue_table="submit_queue"),
         connection_factory=recorder.connect,
     )
-    context = generated.build_context(
-        lite_backend,
-        SubmitBackendHeartbeatAdapter(lite_backend),
-    )
+    context = generated.build_context(lite_backend)
 
     receipts = run_subsystem_smoke(context)
 
