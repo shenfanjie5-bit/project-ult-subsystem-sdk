@@ -10,7 +10,7 @@ from subsystem_sdk.base.registration import SubsystemRegistrationSpec
 from subsystem_sdk.heartbeat.client import HeartbeatClient
 from subsystem_sdk.heartbeat.payload import HeartbeatStatus, build_ex0_payload
 from subsystem_sdk.submit.client import SubmitClient
-from subsystem_sdk.submit.receipt import SubmitReceipt, normalize_receipt
+from subsystem_sdk.submit.receipt import BackendKind, SubmitReceipt, normalize_receipt
 from subsystem_sdk.validate.engine import validate_payload as default_validate_payload
 from subsystem_sdk.validate.result import ExType, ValidationResult
 
@@ -60,6 +60,17 @@ class BaseSubsystemContext:
         self,
         status: HeartbeatStatus | Mapping[str, Any],
     ) -> SubmitReceipt:
+        heartbeat_result = self._validate_heartbeat_support()
+        if heartbeat_result is not None:
+            return normalize_receipt(
+                accepted=False,
+                backend_kind=self._heartbeat_backend_kind(),
+                transport_ref=None,
+                validator_version=heartbeat_result.schema_version,
+                warnings=heartbeat_result.warnings,
+                errors=heartbeat_result.field_errors,
+            )
+
         ex0_payload = build_ex0_payload(
             self.registration.subsystem_id,
             self.registration.version,
@@ -71,25 +82,74 @@ class BaseSubsystemContext:
         self,
         payload: Mapping[str, Any],
     ) -> ValidationResult | None:
+        errors: list[str] = []
         ex_type = payload.get("ex_type")
         if ex_type is None:
-            error = "producer payload must declare ex_type"
+            errors.append("producer payload must declare ex_type")
         elif not isinstance(ex_type, str):
-            error = "producer payload ex_type must be a string"
+            errors.append("producer payload ex_type must be a string")
         elif ex_type not in self.registration.supported_ex_types:
-            supported = ", ".join(
-                repr(supported_ex_type)
-                for supported_ex_type in self.registration.supported_ex_types
-            )
-            error = (
+            errors.append(
                 f"registration {self.registration.subsystem_id!r} does not "
-                f"support Ex type {ex_type!r}; supported Ex type(s): {supported}"
+                f"support Ex type {ex_type!r}; supported Ex type(s): "
+                f"{self._supported_ex_types_text()}"
             )
-        else:
+
+        subsystem_id = payload.get("subsystem_id")
+        if subsystem_id is not None:
+            if not isinstance(subsystem_id, str):
+                errors.append("producer payload subsystem_id must be a string")
+            elif subsystem_id != self.registration.subsystem_id:
+                errors.append(
+                    "producer payload subsystem_id "
+                    f"{subsystem_id!r} conflicts with registration "
+                    f"{self.registration.subsystem_id!r}"
+                )
+
+        version = payload.get("version")
+        if version is not None:
+            if not isinstance(version, str):
+                errors.append("producer payload version must be a string when present")
+            elif version != self.registration.version:
+                errors.append(
+                    "producer payload version "
+                    f"{version!r} conflicts with registration "
+                    f"{self.registration.version!r}"
+                )
+
+        if not errors:
             return None
 
         return ValidationResult.fail(
             ex_type=_result_ex_type(ex_type),
             schema_version=_REGISTRATION_SCHEMA_VERSION,
-            field_errors=(error,),
+            field_errors=tuple(errors),
         )
+
+    def _validate_heartbeat_support(self) -> ValidationResult | None:
+        if "Ex-0" in self.registration.supported_ex_types:
+            return None
+
+        return ValidationResult.fail(
+            ex_type="Ex-0",
+            schema_version=_REGISTRATION_SCHEMA_VERSION,
+            field_errors=(
+                f"registration {self.registration.subsystem_id!r} does not "
+                "support Ex-0 heartbeat; supported Ex type(s): "
+                f"{self._supported_ex_types_text()}",
+            ),
+        )
+
+    def _supported_ex_types_text(self) -> str:
+        return ", ".join(
+            repr(supported_ex_type)
+            for supported_ex_type in self.registration.supported_ex_types
+        )
+
+    def _heartbeat_backend_kind(self) -> BackendKind:
+        heartbeat_backend = getattr(
+            self.heartbeat_client,
+            "backend",
+            self.submit_client.backend,
+        )
+        return heartbeat_backend.backend_kind

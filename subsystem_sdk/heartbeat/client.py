@@ -7,11 +7,8 @@ from typing import Any
 
 from subsystem_sdk.heartbeat.protocol import HeartbeatBackendInterface
 from subsystem_sdk.heartbeat.payload import HeartbeatStatus
-from subsystem_sdk.submit.receipt import (
-    SubmitReceipt,
-    normalize_backend_receipt,
-    normalize_receipt,
-)
+from subsystem_sdk.submit._dispatch import validate_then_dispatch
+from subsystem_sdk.submit.receipt import SubmitReceipt
 from subsystem_sdk.validate.engine import validate_payload
 from subsystem_sdk.validate.result import ValidationResult
 from subsystem_sdk.validate.semantics import EX0_SEMANTIC
@@ -65,44 +62,12 @@ class HeartbeatClient:
         return self._backend
 
     def send_heartbeat(self, status_payload: Mapping[str, Any]) -> SubmitReceipt:
-        validation = self._validator(status_payload)
-        if validation.is_valid is False:
-            return normalize_receipt(
-                accepted=False,
-                backend_kind=self._backend.backend_kind,
-                transport_ref=None,
-                validator_version=validation.schema_version,
-                warnings=validation.warnings,
-                errors=validation.field_errors,
-            )
-
-        boundary_errors = _heartbeat_boundary_errors(status_payload, validation)
-        if boundary_errors:
-            return normalize_receipt(
-                accepted=False,
-                backend_kind=self._backend.backend_kind,
-                transport_ref=None,
-                validator_version=validation.schema_version,
-                warnings=validation.warnings,
-                errors=boundary_errors,
-            )
-
-        backend_receipt = normalize_backend_receipt(
-            self._backend.send(status_payload),
+        return validate_then_dispatch(
+            status_payload,
             backend_kind=self._backend.backend_kind,
-            validator_version=validation.schema_version,
-        )
-        if not validation.warnings:
-            return backend_receipt
-
-        return normalize_receipt(
-            accepted=backend_receipt.accepted,
-            receipt_id=backend_receipt.receipt_id,
-            backend_kind=backend_receipt.backend_kind,
-            transport_ref=backend_receipt.transport_ref,
-            validator_version=backend_receipt.validator_version,
-            warnings=validation.warnings + backend_receipt.warnings,
-            errors=backend_receipt.errors,
+            validator=self._validator,
+            dispatch=self._backend.send,
+            boundary_check=_heartbeat_boundary_errors,
         )
 
 

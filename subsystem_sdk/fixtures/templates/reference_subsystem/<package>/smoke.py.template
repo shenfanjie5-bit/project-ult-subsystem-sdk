@@ -1,0 +1,19 @@
+"""Smoke entrypoint for the generated reference subsystem."""
+
+from __future__ import annotations
+
+from subsystem_sdk.heartbeat import HeartbeatBackendInterface
+from subsystem_sdk.submit import SubmitBackendInterface, SubmitReceipt
+from subsystem_sdk.testing import run_subsystem_smoke
+
+from .runtime import build_context
+
+FIXTURE_BUNDLE_REFS = ("ex1/default", "ex2/default", "ex3/default")
+
+
+def run_smoke(
+    submit_backend: SubmitBackendInterface,
+    heartbeat_backend: HeartbeatBackendInterface | None = None,
+) -> tuple[SubmitReceipt, ...]:
+    context = build_context(submit_backend, heartbeat_backend)
+    return run_subsystem_smoke(context, bundle_names=FIXTURE_BUNDLE_REFS)

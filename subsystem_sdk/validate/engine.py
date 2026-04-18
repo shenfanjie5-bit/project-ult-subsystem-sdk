@@ -22,6 +22,7 @@ from .preflight import (
     EntityRegistryLookup,
     PreflightPolicy,
     run_entity_preflight,
+    should_run_entity_preflight,
 )
 from .result import ExType, ValidationResult
 
@@ -30,11 +31,6 @@ _UNKNOWN_SCHEMA_VERSION: Final[str] = "unknown"
 _UNKNOWN_SCHEMA_VERSION_WARNING: Final[str] = (
     "contracts schema version is unavailable; using 'unknown'"
 )
-_PREFLIGHT_EX_TYPES: Final[frozenset[ExType]] = frozenset(
-    {"Ex-1", "Ex-2", "Ex-3"}
-)
-
-
 def _coerce_ex_type(ex_type: str) -> ExType:
     if ex_type not in SUPPORTED_EX_TYPES:
         raise UnknownExTypeError(f"unsupported Ex type: {ex_type!r}")
@@ -158,10 +154,10 @@ def _preflight_block_errors(preflight: EntityPreflightResult) -> tuple[str, ...]
 def _should_run_preflight(
     result: ValidationResult, preflight_policy: PreflightPolicy
 ) -> bool:
-    return (
-        result.is_valid
-        and result.ex_type in _PREFLIGHT_EX_TYPES
-        and preflight_policy != "skip"
+    return should_run_entity_preflight(
+        is_valid=result.is_valid,
+        ex_type=result.ex_type,
+        policy=preflight_policy,
     )
 
 

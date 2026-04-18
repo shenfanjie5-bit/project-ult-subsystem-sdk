@@ -72,6 +72,22 @@ def test_bundle_model_dump_json_mode_is_json_safe() -> None:
     assert isinstance(dumped["valid_examples"][0]["payload"]["pending_count"], int)
 
 
+def test_bundle_rejects_valid_example_with_wrong_ex_type() -> None:
+    with pytest.raises(ValidationError, match="must match bundle ex_type"):
+        ContractExampleBundle(
+            bundle_name="ex1/default",
+            ex_type="Ex-1",
+            valid_examples=(
+                ContractExample(
+                    name="wrong-ex-type",
+                    payload={"ex_type": "Ex-2", "subsystem_id": "subsystem-demo"},
+                    notes="Valid examples must match bundle metadata.",
+                ),
+            ),
+            invalid_examples=(),
+        )
+
+
 @pytest.mark.parametrize("bundle_name", available_fixture_bundles())
 def test_default_bundle_data_meets_coverage_rules(bundle_name: str) -> None:
     bundle = load_fixture_bundle(bundle_name)

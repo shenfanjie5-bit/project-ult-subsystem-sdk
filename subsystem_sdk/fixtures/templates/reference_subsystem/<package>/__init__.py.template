@@ -6,11 +6,14 @@ from .handlers import (
     example_handler_ex3,
 )
 from .runtime import build_context, load_registration
+from .smoke import FIXTURE_BUNDLE_REFS, run_smoke
 
 __all__ = [
     "build_context",
     "load_registration",
+    "FIXTURE_BUNDLE_REFS",
     "example_handler_ex1",
     "example_handler_ex2",
     "example_handler_ex3",
+    "run_smoke",
 ]

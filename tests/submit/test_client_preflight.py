@@ -217,3 +217,71 @@ def test_submit_client_default_does_not_run_preflight_lookup() -> None:
     assert receipt.accepted is True
     assert receipt.warnings == ("backend warning",)
     assert lookup.calls == []
+
+
+def test_submit_client_already_preflighted_warn_result_is_idempotent() -> None:
+    backend = RecordingBackend(warnings=())
+    lookup = RecordingLookup()
+    payload = _payload(canonical_entity_id="missing-entity")
+
+    def validator(received: Mapping[str, Any]) -> ValidationResult:
+        assert received is payload
+        return ValidationResult.ok(
+            ex_type="Ex-1",
+            schema_version="preflighted-v1",
+            warnings=("existing preflight warning",),
+            preflight={
+                "checked": True,
+                "unresolved_refs": ["missing-entity"],
+                "warnings": ["existing preflight warning"],
+                "policy": "warn",
+            },
+        )
+
+    receipt = SubmitClient(
+        backend,
+        validator=validator,
+        entity_lookup=lookup,
+        preflight_policy="warn",
+    ).submit(payload)
+
+    assert lookup.calls == []
+    assert backend.calls == [payload]
+    assert receipt.accepted is True
+    assert receipt.warnings == ("existing preflight warning",)
+
+
+def test_submit_client_already_preflighted_block_result_is_idempotent() -> None:
+    backend = RecordingBackend()
+    lookup = RecordingLookup()
+    payload = _payload(canonical_entity_id="missing-entity")
+
+    def validator(received: Mapping[str, Any]) -> ValidationResult:
+        assert received is payload
+        return ValidationResult.fail(
+            ex_type="Ex-1",
+            schema_version="preflighted-v2",
+            field_errors=("entity preflight blocked unresolved reference(s): missing",),
+            warnings=("existing preflight warning",),
+            preflight={
+                "checked": True,
+                "unresolved_refs": ["missing"],
+                "warnings": ["existing preflight warning"],
+                "policy": "block",
+            },
+        )
+
+    receipt = SubmitClient(
+        backend,
+        validator=validator,
+        entity_lookup=lookup,
+        preflight_policy="block",
+    ).submit(payload)
+
+    assert lookup.calls == []
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.warnings == ("existing preflight warning",)
+    assert receipt.errors == (
+        "entity preflight blocked unresolved reference(s): missing",
+    )

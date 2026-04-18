@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from types import MappingProxyType
-from typing import Any
+from typing import Any, Self
 
 from pydantic import (
     BaseModel,
@@ -12,31 +11,11 @@ from pydantic import (
     ValidationInfo,
     field_serializer,
     field_validator,
+    model_validator,
 )
 
+from subsystem_sdk._json import freeze_json_like, to_json_safe
 from subsystem_sdk.validate.result import ExType
-
-
-def _freeze_json_like(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze_json_like(item) for key, item in value.items()}
-        )
-    if isinstance(value, list | tuple):
-        return tuple(_freeze_json_like(item) for item in value)
-    if isinstance(value, set | frozenset):
-        return frozenset(_freeze_json_like(item) for item in value)
-    return value
-
-
-def _to_json_safe(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _to_json_safe(item) for key, item in value.items()}
-    if isinstance(value, tuple | list):
-        return [_to_json_safe(item) for item in value]
-    if isinstance(value, frozenset | set):
-        return [_to_json_safe(item) for item in sorted(value, key=repr)]
-    return value
 
 
 class ContractExample(BaseModel):
@@ -62,11 +41,11 @@ class ContractExample(BaseModel):
     ) -> Mapping[str, Any]:
         if not payload:
             raise ValueError("payload must be non-empty")
-        return _freeze_json_like(payload)
+        return freeze_json_like(payload)
 
     @field_serializer("payload")
     def _serialize_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return _to_json_safe(payload)
+        return to_json_safe(payload)
 
 
 class ContractExampleBundle(BaseModel):
@@ -86,3 +65,18 @@ class ContractExampleBundle(BaseModel):
         if not value.strip():
             raise ValueError("bundle_name must be non-empty")
         return value
+
+    @model_validator(mode="after")
+    def _valid_examples_match_bundle_ex_type(self) -> Self:
+        mismatched = [
+            example.name
+            for example in self.valid_examples
+            if example.payload.get("ex_type") != self.ex_type
+        ]
+        if mismatched:
+            joined = ", ".join(repr(name) for name in mismatched)
+            raise ValueError(
+                "valid example payload ex_type must match bundle ex_type "
+                f"{self.ex_type!r}; mismatched example(s): {joined}"
+            )
+        return self

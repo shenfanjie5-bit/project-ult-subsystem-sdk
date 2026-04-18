@@ -5,12 +5,14 @@ from pathlib import Path
 import pytest
 
 import subsystem_sdk.base.scaffold as scaffold_module
+from subsystem_sdk.backends import MockSubmitBackend
 from subsystem_sdk.base import (
     ReferenceSubsystemTemplate,
     SubsystemRegistrationSpec,
     create_reference_subsystem,
     load_registration_spec,
 )
+from subsystem_sdk.validate import ValidationResult
 
 
 def _registration(
@@ -59,8 +61,7 @@ def test_create_reference_subsystem_escapes_pyproject_toml_metadata(
     tmp_path: Path,
 ) -> None:
     subsystem_id = 'subsystem-reference"\ndependencies = ["injected"]\n#'
-    version = '0.1.0"\nscripts = { injected = "pkg:main" }\n#'
-    registration = _registration(subsystem_id=subsystem_id, version=version)
+    registration = _registration(subsystem_id=subsystem_id)
 
     create_reference_subsystem(registration, tmp_path)
 
@@ -68,12 +69,25 @@ def test_create_reference_subsystem_escapes_pyproject_toml_metadata(
     project = pyproject["project"]
 
     assert project["name"] == "reference-subsystem"
-    assert project["version"] == version
+    assert project["version"] == "0.1.0"
     assert project["description"] == (
         f"Reference subsystem skeleton for {subsystem_id}."
     )
     assert project["dependencies"] == ["project-ult-subsystem-sdk"]
     assert "scripts" not in project
+
+
+def test_create_reference_subsystem_rejects_invalid_package_metadata_version(
+    tmp_path: Path,
+) -> None:
+    registration = _registration(
+        version='0.1.0"\nscripts = { injected = "pkg:main" }\n#'
+    )
+
+    with pytest.raises(ValueError, match="PEP 440"):
+        create_reference_subsystem(registration, tmp_path)
+
+    assert not tmp_path.exists() or not any(tmp_path.iterdir())
 
 
 def test_create_reference_subsystem_generated_package_imports(
@@ -91,6 +105,12 @@ def test_create_reference_subsystem_generated_package_imports(
     assert callable(generated.example_handler_ex1)
     assert callable(generated.example_handler_ex2)
     assert callable(generated.example_handler_ex3)
+    assert generated.FIXTURE_BUNDLE_REFS == (
+        "ex1/default",
+        "ex2/default",
+        "ex3/default",
+    )
+    assert callable(generated.run_smoke)
 
     handlers = (tmp_path / package_name / "handlers.py").read_text(encoding="utf-8")
     assert "example_handler_ex1" in handlers
@@ -99,6 +119,27 @@ def test_create_reference_subsystem_generated_package_imports(
     assert "news" not in handlers
     assert "announcement" not in handlers
     assert "report" not in handlers
+
+
+def test_generated_context_wraps_submit_only_backend_for_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package_name = "reference_generated_adapter"
+
+    create_reference_subsystem(_registration(), tmp_path, package_name=package_name)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    generated = importlib.import_module(package_name)
+    backend = MockSubmitBackend(receipt_id="receipt-1")
+
+    def validator(payload: object) -> ValidationResult:
+        return ValidationResult.ok(ex_type="Ex-0", schema_version="contracts-v1")
+
+    context = generated.build_context(backend, validator=validator)
+    receipt = context.send_heartbeat({"status": "healthy"})
+
+    assert receipt.accepted is True
+    assert [payload["ex_type"] for payload in backend.submitted_payloads] == ["Ex-0"]
 
 
 def test_create_reference_subsystem_generated_code_has_no_transport_details(

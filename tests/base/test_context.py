@@ -44,6 +44,17 @@ def _registration() -> SubsystemRegistrationSpec:
     )
 
 
+def _registration_without_heartbeat() -> SubsystemRegistrationSpec:
+    return SubsystemRegistrationSpec(
+        subsystem_id="subsystem-demo",
+        version="0.1.0",
+        domain="demo",
+        supported_ex_types=["Ex-1"],
+        owner="sdk",
+        heartbeat_policy_ref="default",
+    )
+
+
 def _context(
     *,
     submit_client: RecordingSubmitClient | None = None,
@@ -195,6 +206,75 @@ def test_context_submit_rejects_unregistered_ex_type_without_backend_call() -> N
     assert submit_client.calls == []
 
 
+def test_context_validate_payload_rejects_mismatched_subsystem_id() -> None:
+    calls: list[Mapping[str, Any]] = []
+
+    def validator(received: Mapping[str, Any]) -> ValidationResult:
+        calls.append(received)
+        return ValidationResult.ok(ex_type="Ex-1", schema_version="contracts-v1")
+
+    context = BaseSubsystemContext(
+        registration=_registration(),
+        submit_client=RecordingSubmitClient(
+            SubmitReceipt(
+                accepted=True,
+                receipt_id="submit-receipt",
+                backend_kind="mock",
+                transport_ref=None,
+                validator_version="contracts-v1",
+            )
+        ),  # type: ignore[arg-type]
+        heartbeat_client=RecordingHeartbeatClient(
+            SubmitReceipt(
+                accepted=True,
+                receipt_id="heartbeat-receipt",
+                backend_kind="mock",
+                transport_ref=None,
+                validator_version="contracts-v1",
+            )
+        ),  # type: ignore[arg-type]
+        validator=validator,
+    )
+
+    result = context.validate_payload(
+        {"ex_type": "Ex-1", "subsystem_id": "other-subsystem"}
+    )
+
+    assert result.is_valid is False
+    assert result.field_errors == (
+        "producer payload subsystem_id 'other-subsystem' conflicts with "
+        "registration 'subsystem-demo'",
+    )
+    assert calls == []
+
+
+def test_context_submit_rejects_mismatched_version_without_backend_call() -> None:
+    submit_client = RecordingSubmitClient(
+        SubmitReceipt(
+            accepted=True,
+            receipt_id="submit-receipt",
+            backend_kind="mock",
+            transport_ref="transport-1",
+            validator_version="contracts-v1",
+        )
+    )
+    context = _context(submit_client=submit_client)
+
+    receipt = context.submit(
+        {
+            "ex_type": "Ex-1",
+            "subsystem_id": "subsystem-demo",
+            "version": "9.9.9",
+        }
+    )
+
+    assert receipt.accepted is False
+    assert receipt.errors == (
+        "producer payload version '9.9.9' conflicts with registration '0.1.0'",
+    )
+    assert submit_client.calls == []
+
+
 def test_context_send_heartbeat_builds_ex0_payload_and_delegates() -> None:
     expected = SubmitReceipt(
         accepted=True,
@@ -234,3 +314,38 @@ def test_context_send_heartbeat_accepts_status_mapping() -> None:
 
     assert heartbeat_client.calls[0]["status"] == "degraded"
     assert heartbeat_client.calls[0]["pending_count"] == 3
+
+
+def test_context_send_heartbeat_rejects_registration_without_ex0() -> None:
+    heartbeat_client = RecordingHeartbeatClient(
+        SubmitReceipt(
+            accepted=True,
+            receipt_id="heartbeat-receipt",
+            backend_kind="mock",
+            transport_ref=None,
+            validator_version="contracts-v1",
+        )
+    )
+    context = BaseSubsystemContext(
+        registration=_registration_without_heartbeat(),
+        submit_client=RecordingSubmitClient(
+            SubmitReceipt(
+                accepted=True,
+                receipt_id="submit-receipt",
+                backend_kind="mock",
+                transport_ref=None,
+                validator_version="contracts-v1",
+            )
+        ),  # type: ignore[arg-type]
+        heartbeat_client=heartbeat_client,  # type: ignore[arg-type]
+    )
+
+    receipt = context.send_heartbeat({"status": "healthy"})
+
+    assert receipt.accepted is False
+    assert receipt.validator_version == "registration"
+    assert receipt.errors == (
+        "registration 'subsystem-demo' does not support Ex-0 heartbeat; "
+        "supported Ex type(s): 'Ex-1'",
+    )
+    assert heartbeat_client.calls == []

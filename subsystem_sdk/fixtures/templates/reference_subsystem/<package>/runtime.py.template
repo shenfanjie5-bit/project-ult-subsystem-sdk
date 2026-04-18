@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from subsystem_sdk.base import BaseSubsystemContext, load_registration_spec
+from subsystem_sdk.backends import SubmitBackendHeartbeatAdapter
 from subsystem_sdk.heartbeat import HeartbeatBackendInterface, HeartbeatClient
 from subsystem_sdk.submit import SubmitBackendInterface, SubmitClient
 from subsystem_sdk.validate import ValidationResult, validate_payload
@@ -18,13 +19,24 @@ def load_registration():
     return load_registration_spec(REGISTRATION_PATH)
 
 
+def _heartbeat_backend_or_adapter(
+    submit_backend: SubmitBackendInterface,
+    heartbeat_backend: HeartbeatBackendInterface | None,
+) -> HeartbeatBackendInterface:
+    if heartbeat_backend is not None:
+        return heartbeat_backend
+    if callable(getattr(submit_backend, "send", None)):
+        return submit_backend
+    return SubmitBackendHeartbeatAdapter(submit_backend)
+
+
 def build_context(
     submit_backend: SubmitBackendInterface,
     heartbeat_backend: HeartbeatBackendInterface | None = None,
     *,
     validator: Callable[[Mapping[str, Any]], ValidationResult] = validate_payload,
 ) -> BaseSubsystemContext:
-    heartbeat = heartbeat_backend if heartbeat_backend is not None else submit_backend
+    heartbeat = _heartbeat_backend_or_adapter(submit_backend, heartbeat_backend)
     registration = load_registration()
     return BaseSubsystemContext(
         registration=registration,
