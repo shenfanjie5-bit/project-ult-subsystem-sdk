@@ -107,9 +107,13 @@ EXPECTED_EXPORTS = {
 
 
 def test_version() -> None:
-    # Bumped to 0.1.1 in stage 2.7 (milestone-test-baseline) when public.py
-    # + 5 canonical tier dirs + 5 CI lanes + iron rules 1-6 landed.
-    assert subsystem_sdk.__version__ == "0.1.1"
+    # 0.1.1 — stage 2.7 (milestone-test-baseline): public.py + 5 canonical
+    # tier dirs + 5 CI lanes + iron rules 1-6 landed (codex approved).
+    # 0.1.2 — stage 2.8 follow-up #3 Operation 2: re-pin contracts >=0.1.3
+    # for the cross-repo reconciliation that lets downstream subsystems
+    # (announcement / news) use producer_context + Ex1.evidence + Ex2
+    # affected_sectors empty list. No envelope-strip behavior change.
+    assert subsystem_sdk.__version__ == "0.1.2"
 
 
 def test_root_package_exports_preflight_api() -> None:
