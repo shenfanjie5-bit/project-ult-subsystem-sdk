@@ -19,6 +19,18 @@ _SCHEMA_REGISTRY_NAMES: Final[tuple[str, ...]] = (
     "EX_PAYLOAD_MODELS",
     "SCHEMAS",
 )
+# The real ``contracts`` package (>=v0.1.2) exports Ex payload models from
+# ``contracts.schemas`` under their canonical class names, NOT under the
+# ``Ex0Payload`` / ``Ex0Schema`` shape this gateway used to look for.
+# Keep this map in sync with ``contracts/src/contracts/schemas/ex_payloads.py``.
+# Cross-repo align tests (tests/contract/test_contracts_alignment.py) verify
+# every value here actually resolves against the installed contracts package.
+_CONTRACTS_SCHEMAS_CANONICAL_NAMES: Final[dict[str, str]] = {
+    "Ex-0": "Ex0Metadata",
+    "Ex-1": "Ex1CandidateFact",
+    "Ex-2": "Ex2CandidateSignal",
+    "Ex-3": "Ex3CandidateGraphDelta",
+}
 
 
 class ContractsUnavailableError(RuntimeError):
@@ -90,6 +102,26 @@ def _validate_schema_type(ex_type: str, schema: Any) -> type:
     return schema
 
 
+def _lookup_canonical_schemas_namespace(ex_type: str) -> type | None:
+    """Resolve the Ex schema by importing ``contracts.schemas`` and looking
+    up the canonical class name (e.g. ``Ex0Metadata``).
+
+    This is the path the real published contracts package (>=v0.1.2) takes;
+    earlier lookups (registry / get_ex_schema callable / sibling attribute
+    on top-level ``contracts``) are kept for backward compatibility with
+    older or test-stubbed contracts modules.
+    """
+
+    canonical_name = _CONTRACTS_SCHEMAS_CANONICAL_NAMES.get(ex_type)
+    if canonical_name is None:
+        return None
+    try:
+        schemas_module = importlib.import_module("contracts.schemas")
+    except ImportError:
+        return None
+    return getattr(schemas_module, canonical_name, None)
+
+
 def get_ex_schema(ex_type: str) -> type:
     """Return the contracts Pydantic model class for a supported Ex type."""
 
@@ -104,6 +136,11 @@ def get_ex_schema(ex_type: str) -> type:
         loader = getattr(contracts_module, "get_ex_schema", None)
         if callable(loader):
             schema = loader(ex_type)
+    if schema is None:
+        # Real published contracts (>=v0.1.2): canonical-name lookup in
+        # ``contracts.schemas``. Done last so tests that monkey-patch
+        # ``sys.modules["contracts"]`` keep priority.
+        schema = _lookup_canonical_schemas_namespace(ex_type)
 
     if schema is None:
         raise ContractsSchemaError(

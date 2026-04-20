@@ -4,17 +4,35 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "project-ult-subsystem-sdk"
-version = "0.1.0"
-description = "Scaffold workspace for subsystem-sdk."
+version = "0.1.1"
+description = "Unified producer SDK (submit / send_heartbeat / validate_payload) for project-ult subsystems."
 readme = "README.md"
-requires-python = ">=3.11"
+# Capped at <3.13 for stage-2 plan parity with orchestrator/dagster wheels and
+# assembly e2e — every module's clean-venv verification uses python3.12.
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "pydantic>=2.6",
+    "project-ult-contracts>=0.1.1",
 ]
 
 [project.optional-dependencies]
+# Stage-2 plan iron rule #3 split:
+# - dev: offline-first pure-pip (test-fast / smoke lanes use only this).
+# - contracts-schemas: cross-repo source-of-truth pin (contract lane).
+# - shared-fixtures: real audit-eval fixtures (regression lane).
+# Pre-existing `test` extra preserved for backwards-compatibility with
+# `pip install -e ".[test]"` callers.
+dev = [
+    "pytest>=8",
+]
 test = [
     "pytest>=8",
+]
+contracts-schemas = [
+    "project-ult-contracts @ git+https://github.com/shenfanjie5-bit/project-ult-contracts.git@v0.1.2",
+]
+shared-fixtures = [
+    "project-ult-audit-eval @ git+https://github.com/shenfanjie5-bit/project-ult-audit-eval.git@v0.2.1",
 ]
 
 [tool.setuptools.packages.find]

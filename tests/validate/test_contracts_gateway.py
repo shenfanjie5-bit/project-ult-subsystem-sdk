@@ -79,6 +79,15 @@ def test_get_ex_schema_reports_missing_schema(
     module.EX_PAYLOAD_SCHEMAS = {}
     _install_contracts(monkeypatch, module)
 
+    # Stage 2.7 added a fallback path that probes ``contracts.schemas`` for
+    # canonical class names (Ex0Metadata / Ex1CandidateFact / ...). To test
+    # the "schema unavailable" intent of this case, also stub
+    # ``contracts.schemas`` as an empty module so the canonical-name lookup
+    # fails too. (Without this, sibling contracts/src on PYTHONPATH or a
+    # cached real import would silently make this test misleadingly pass.)
+    schemas_module = types.ModuleType("contracts.schemas")
+    monkeypatch.setitem(sys.modules, "contracts.schemas", schemas_module)
+
     with pytest.raises(ContractsSchemaError, match="could not be resolved"):
         get_ex_schema("Ex-1")
 

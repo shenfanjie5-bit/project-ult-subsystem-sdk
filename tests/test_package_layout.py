@@ -107,7 +107,9 @@ EXPECTED_EXPORTS = {
 
 
 def test_version() -> None:
-    assert subsystem_sdk.__version__ == "0.1.0"
+    # Bumped to 0.1.1 in stage 2.7 (milestone-test-baseline) when public.py
+    # + 5 canonical tier dirs + 5 CI lanes + iron rules 1-6 landed.
+    assert subsystem_sdk.__version__ == "0.1.1"
 
 
 def test_root_package_exports_preflight_api() -> None:
