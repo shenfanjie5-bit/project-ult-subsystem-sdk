@@ -38,7 +38,10 @@ def test_submit_client_validates_before_calling_backend() -> None:
 
     receipt = SubmitClient(backend, validator=validator).submit(payload)
 
-    assert backend.calls == [payload]
+    # Stage-2.7 follow-up #2: validate_then_dispatch strips SDK envelope
+    # (ex_type/semantic/produced_at) before backend dispatch — backend
+    # receives the wire shape, NOT the original payload with envelope.
+    assert backend.calls == [{"subsystem_id": "subsystem-a"}]
     assert receipt == SubmitReceipt(
         accepted=True,
         receipt_id="backend-receipt-1",
@@ -90,7 +93,10 @@ def test_submit_client_from_config_matches_direct_construction() -> None:
     )
     receipt = client.submit(payload)
 
-    assert backend.calls == [payload]
+    # Stage-2.7 follow-up #2: validate_then_dispatch strips SDK envelope
+    # (ex_type/semantic/produced_at) before backend dispatch — backend
+    # receives the wire shape, NOT the original payload with envelope.
+    assert backend.calls == [{"subsystem_id": "subsystem-a"}]
     assert receipt.accepted is True
     assert receipt.backend_kind == "mock"
     assert receipt.validator_version == "contracts-v1"

@@ -218,6 +218,17 @@ def _valid_ex2_payload() -> dict[str, str]:
     }
 
 
+def _wire(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return what ``validate_then_dispatch`` will actually hand to the
+    backend (SDK envelope stripped). Stage-2.7 follow-up #2: backends
+    MUST receive wire shape, not the SDK envelope.
+    """
+
+    from subsystem_sdk.validate.engine import strip_sdk_envelope
+
+    return dict(strip_sdk_envelope(payload))
+
+
 def _registration() -> SubsystemRegistrationSpec:
     return SubsystemRegistrationSpec(
         subsystem_id="subsystem-switch",
@@ -320,19 +331,39 @@ def test_same_invalid_payload_fails_before_lite_or_full_backend_call() -> None:
 
 
 def test_full_backend_from_config_returns_receipt_on_serialization_failure() -> None:
+    # Stage-2.7 follow-up #2: SDK envelope (ex_type / produced_at) is
+    # stripped before backend dispatch, so historically setting a
+    # datetime in `produced_at` to trigger json.dumps failure no longer
+    # reaches the backend. AND every producer-owned field has a typed
+    # contracts schema that rejects non-string values at validate time.
+    # The only realistic way to exercise the Full backend's JSON
+    # serialization failure path (a defensive code branch) is to bypass
+    # contracts validation with a permissive validator and feed a payload
+    # whose wire shape contains a datetime.
+    from subsystem_sdk.validate.result import ValidationResult
+
     producer = FakeKafkaProducer()
     config = SubmitBackendConfig(
         backend_kind="full_kafka",
         topic="candidate-events",
     )
     payload = _valid_ex2_payload() | {
-        "produced_at": datetime(2026, 4, 18, tzinfo=timezone.utc)
+        "canonical_entity_id": datetime(2026, 4, 18, tzinfo=timezone.utc),
     }
+
+    def permissive_validator(_: Mapping[str, Any]) -> ValidationResult:
+        # Mirror what the real validator returns for an Ex-2; skip the
+        # contracts model_validate so the datetime survives.
+        return ValidationResult.ok(ex_type="Ex-2", schema_version="v-ex2-switch")
 
     def factory(received: SubmitBackendConfig) -> Any:
         return build_submit_backend(received, kafka_producer=producer)
 
-    receipt = SubmitClient.from_config(config, backend_factory=factory).submit(payload)
+    receipt = SubmitClient.from_config(
+        config,
+        backend_factory=factory,
+        validator=permissive_validator,
+    ).submit(payload)
 
     assert producer.calls == []
     assert receipt.accepted is False
@@ -357,10 +388,11 @@ def test_full_backend_from_config_keeps_successful_send_accepted_on_invalid_ack(
 
     receipt = SubmitClient.from_config(config, backend_factory=factory).submit(payload)
 
+    # Stage-2.7 follow-up #2: producer receives wire shape, not SDK envelope.
     assert producer.calls == [
         (
             "candidate-events",
-            b'{"ex_type":"Ex-2","produced_at":"2026-04-18T00:00:00Z","subsystem_id":"subsystem-switch"}',
+            b'{"subsystem_id":"subsystem-switch"}',
             None,
         )
     ]
@@ -545,7 +577,7 @@ def test_config_built_client_preserves_backend_rejection_warning_order(
         validator=validator,
     ).submit(_valid_ex2_payload())
 
-    assert backend.calls == [_valid_ex2_payload()]
+    assert backend.calls == [_wire(_valid_ex2_payload())]
     assert receipt.accepted is False
     assert receipt.errors == ("backend rejected",)
     assert receipt.warnings == ("validator warning", "backend warning")

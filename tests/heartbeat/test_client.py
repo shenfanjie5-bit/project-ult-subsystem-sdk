@@ -56,6 +56,8 @@ def test_heartbeat_client_validates_before_calling_backend() -> None:
     backend = RecordingHeartbeatBackend()
 
     def validator(received: Mapping[str, Any]) -> ValidationResult:
+        # Validator receives the FULL payload including SDK envelope
+        # (ex_type, semantic) — those are stripped only at dispatch.
         assert received is payload
         return ValidationResult.ok(
             ex_type="Ex-0",
@@ -65,7 +67,12 @@ def test_heartbeat_client_validates_before_calling_backend() -> None:
 
     receipt = HeartbeatClient(backend, validator=validator).send_heartbeat(payload)
 
-    assert backend.calls == [payload]
+    # Stage-2.7 follow-up #2 (codex review #2 P1): backend MUST receive
+    # the wire payload (envelope stripped). What contracts.schemas.Ex0Metadata
+    # validated and what reaches Layer B must be the same shape.
+    assert backend.calls == [{"subsystem_id": "subsystem-a"}], (
+        "validate_then_dispatch must strip ex_type/semantic before backend dispatch"
+    )
     assert receipt == SubmitReceipt(
         accepted=True,
         receipt_id="heartbeat-receipt-1",
@@ -117,7 +124,9 @@ def test_heartbeat_client_preserves_backend_rejection() -> None:
         {"ex_type": "Ex-0", "semantic": EX0_SEMANTIC}
     )
 
-    assert backend.calls == [{"ex_type": "Ex-0", "semantic": EX0_SEMANTIC}]
+    # Stage-2.7 follow-up #2: envelope stripped before backend dispatch.
+    # Input was envelope-only (no producer fields), so wire is empty dict.
+    assert backend.calls == [{}]
     assert receipt.accepted is False
     assert receipt.validator_version == "contracts-v3"
     assert receipt.errors == ("backend rejected heartbeat",)

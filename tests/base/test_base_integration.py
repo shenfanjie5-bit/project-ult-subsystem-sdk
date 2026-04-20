@@ -72,8 +72,14 @@ def test_base_context_register_submit_and_heartbeat_happy_path() -> None:
     assert get_registered_subsystem("subsystem-demo", registry=registry) == registration
     assert submit_receipt.accepted is True
     assert submit_receipt.receipt_id == "submit-receipt-1"
-    assert submit_backend.submitted_payloads == (ex1_payload,)
+    # Stage-2.7 follow-up #2: validate_then_dispatch strips SDK envelope
+    # (ex_type/semantic/produced_at) before backend dispatch, so backends
+    # see the wire shape contracts.schemas.Ex* validates + Layer B accepts.
+    assert submit_backend.submitted_payloads == (
+        {"subsystem_id": "subsystem-demo"},
+    )
     assert heartbeat_receipt.accepted is True
     assert heartbeat_receipt.receipt_id == "heartbeat-receipt-1"
-    assert heartbeat_backend.calls[0]["ex_type"] == "Ex-0"
+    # Heartbeat backend must NOT receive ex_type either — pure wire shape.
+    assert "ex_type" not in heartbeat_backend.calls[0]
     assert heartbeat_backend.calls[0]["subsystem_id"] == "subsystem-demo"

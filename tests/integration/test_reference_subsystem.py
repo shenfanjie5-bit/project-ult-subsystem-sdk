@@ -260,16 +260,28 @@ def test_generated_reference_subsystem_switches_to_lite_without_smoke_api_change
     assert len(receipts) == 4
     assert all(receipt.accepted is True for receipt in receipts)
     assert {receipt.backend_kind for receipt in receipts} == {"lite_pg"}
-    assert [payload["ex_type"] for payload in recorder.payloads] == [
-        "Ex-0",
-        "Ex-1",
-        "Ex-2",
-        "Ex-3",
-    ]
+    # Stage-2.7 follow-up #2: backend receives WIRE shape (envelope stripped)
+    # — `ex_type` not in payloads anymore. Routing identity surfaces via
+    # the receipt validator_version + bundle order, not the wire payload.
+    # Cross-validate by checking each payload has the producer fields the
+    # corresponding contracts schema requires + no envelope.
+    for payload in recorder.payloads:
+        assert "ex_type" not in payload, (
+            "SDK envelope (ex_type) leaked to lite_pg backend"
+        )
+        assert "semantic" not in payload
+        assert "produced_at" not in payload
     assert all(
         payload["subsystem_id"] == "subsystem-reference"
         for payload in recorder.payloads
     )
+    # Routing identity check via shape: Ex-0 has `status`+`heartbeat_at`;
+    # Ex-1 has `fact_id`; Ex-2 has `signal_id`; Ex-3 has `delta_id`.
+    payloads = recorder.payloads
+    assert "status" in payloads[0] and "heartbeat_at" in payloads[0]
+    assert "fact_id" in payloads[1]
+    assert "signal_id" in payloads[2]
+    assert "delta_id" in payloads[3]
 
 
 def test_generated_reference_context_works_with_base_subsystem_wrapper(

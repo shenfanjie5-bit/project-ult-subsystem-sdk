@@ -40,6 +40,7 @@ def test_dispatch_preserves_backend_rejection_and_warning_order() -> None:
     payload = {"ex_type": "Ex-2"}
 
     def validator(received: Mapping[str, Any]) -> ValidationResult:
+        # Validator sees the FULL payload (including SDK envelope).
         assert received is payload
         return ValidationResult.ok(
             ex_type="Ex-2",
@@ -48,7 +49,11 @@ def test_dispatch_preserves_backend_rejection_and_warning_order() -> None:
         )
 
     def dispatch(received: Mapping[str, Any]) -> Mapping[str, Any]:
-        assert received is payload
+        # Stage-2.7 follow-up #2 (codex review #2 P1): dispatch receives
+        # the WIRE shape (envelope stripped). For a payload that is ONLY
+        # envelope (no producer fields), the wire is an empty dict.
+        assert received == {}
+        assert "ex_type" not in received
         return {
             "accepted": False,
             "receipt_id": "receipt-1",

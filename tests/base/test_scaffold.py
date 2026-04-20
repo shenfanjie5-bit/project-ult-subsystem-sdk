@@ -139,7 +139,15 @@ def test_generated_context_wraps_submit_only_backend_for_heartbeat(
     receipt = context.send_heartbeat({"status": "healthy"})
 
     assert receipt.accepted is True
-    assert [payload["ex_type"] for payload in backend.submitted_payloads] == ["Ex-0"]
+    # Stage-2.7 follow-up #2: backend receives WIRE shape (envelope stripped),
+    # so ex_type is no longer in the payload — assert routing succeeded by
+    # checking the heartbeat reached the backend with the expected
+    # producer fields, AND that ex_type is absent (envelope strip enforced).
+    assert len(backend.submitted_payloads) == 1
+    sent = backend.submitted_payloads[0]
+    assert "ex_type" not in sent
+    assert "semantic" not in sent
+    assert sent.get("status") == "ok"  # SDK "healthy" -> contracts wire "ok"
 
 
 def test_create_reference_subsystem_generated_code_has_no_transport_details(

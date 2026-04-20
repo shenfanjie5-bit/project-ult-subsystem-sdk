@@ -10,6 +10,16 @@ from pydantic import BaseModel, ConfigDict
 
 from subsystem_sdk.submit import SubmitClient
 from subsystem_sdk.validate import ValidationResult, registry
+from subsystem_sdk.validate.engine import strip_sdk_envelope
+
+
+def _wire(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return what ``validate_then_dispatch`` will hand to the backend
+    (SDK envelope stripped). Stage-2.7 follow-up #2: backends MUST receive
+    wire shape, not the original SDK-enveloped payload.
+    """
+
+    return dict(strip_sdk_envelope(payload))
 
 
 class Ex0Payload(BaseModel):
@@ -121,7 +131,7 @@ def test_submit_client_warn_preflight_accepts_and_merges_warnings() -> None:
         preflight_policy="warn",
     ).submit(payload)
 
-    assert backend.calls == [payload]
+    assert backend.calls == [_wire(payload)]
     assert lookup.calls == [("missing-entity",)]
     assert receipt.accepted is True
     assert receipt.errors == ()
@@ -195,7 +205,7 @@ def test_submit_client_custom_validator_still_receives_only_payload() -> None:
     ).submit(payload)
 
     assert calls == [((payload,), {})]
-    assert backend.calls == [payload]
+    assert backend.calls == [_wire(payload)]
     assert receipt.validator_version == "custom-validator-v1"
     assert receipt.warnings == (
         "validator warning",
@@ -243,7 +253,7 @@ def test_submit_client_already_preflighted_warn_result_is_idempotent() -> None:
     ).submit(payload)
 
     assert lookup.calls == []
-    assert backend.calls == [payload]
+    assert backend.calls == [_wire(payload)]
     assert receipt.accepted is True
     assert receipt.warnings == ("existing preflight warning",)
 

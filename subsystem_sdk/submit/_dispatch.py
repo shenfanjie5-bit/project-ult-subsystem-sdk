@@ -11,6 +11,7 @@ from subsystem_sdk.submit.receipt import (
     normalize_backend_receipt,
     normalize_receipt,
 )
+from subsystem_sdk.validate.engine import strip_sdk_envelope
 from subsystem_sdk.validate.result import ValidationResult
 
 BackendDispatch = Callable[[Mapping[str, Any]], Mapping[str, Any] | SubmitReceipt]
@@ -70,6 +71,10 @@ def validate_then_dispatch(
     if validation.is_valid is False:
         return _validation_failure_receipt(validation, backend_kind=backend_kind)
 
+    # boundary_check runs against the ORIGINAL payload because it inspects
+    # SDK envelope fields (ex_type, semantic) for routing checks (e.g.
+    # HeartbeatClient verifies semantic == EX0_SEMANTIC). These fields are
+    # then stripped before backend dispatch.
     boundary_errors = (
         tuple(boundary_check(payload, validation))
         if boundary_check is not None
@@ -85,8 +90,15 @@ def validate_then_dispatch(
             errors=boundary_errors,
         )
 
+    # Strip SDK envelope before dispatch — what reaches the backend
+    # (Lite PG queue, Full Kafka topic, MockSubmitBackend, ...) MUST be
+    # the wire shape Layer B's contracts.schemas.Ex* model accepts. Without
+    # this strip, backends serialize the SDK envelope to the wire and
+    # Layer B ingest rejects the payload (codex stage-2.7 review #2 P1).
+    wire_payload = strip_sdk_envelope(payload)
+
     backend_receipt = normalize_backend_receipt(
-        dispatch(payload),
+        dispatch(wire_payload),
         backend_kind=backend_kind,
         validator_version=validation.schema_version,
     )

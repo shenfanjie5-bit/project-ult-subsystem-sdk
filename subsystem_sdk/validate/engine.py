@@ -34,11 +34,16 @@ _UNKNOWN_SCHEMA_VERSION_WARNING: Final[str] = (
 # SDK-internal "envelope" fields used for routing/derivation inside the SDK
 # but NOT part of the Layer B wire payload schema in ``contracts``. The
 # contracts Ex payload models declare ``extra='forbid'`` — sending these
-# fields through ``schema.model_validate`` would falsely fail validation.
-# Strip them right before model_validate; producer-owned semantic guards
-# already ran above and have already assert_no_ingest_metadata-checked
-# the full payload mapping (including the envelope), so dropping them
-# here only narrows what contracts sees.
+# fields either through ``schema.model_validate`` OR to a backend that
+# serializes them onto the wire would put unrecognized keys in front of
+# Layer B. Strip them at BOTH boundaries:
+#   - ``validate_payload`` strips them before contracts model_validate
+#     (keeps validation honest).
+#   - ``submit/_dispatch.py validate_then_dispatch`` strips them before
+#     calling the backend dispatch (keeps the wire shape Layer B receives
+#     equal to what contracts validated). Without this second strip the
+#     PG queue / Kafka topic would carry SDK envelope fields that
+#     Layer B can't ingest — codex stage-2.7 review #2 P1.
 #
 # Members:
 # - ex_type / semantic: SDK routing wrapper around Ex-0 payloads.
@@ -47,25 +52,33 @@ _UNKNOWN_SCHEMA_VERSION_WARNING: Final[str] = (
 #   etc.). contracts.schemas Ex1CandidateFact/Ex2CandidateSignal/
 #   Ex3CandidateGraphDelta currently don't define a produced_at field —
 #   if/when contracts adds it to BaseExPayload, drop it from this strip
-#   set so the value reaches Layer B unchanged. (codex stage-2.7 P1
-#   follow-up: makes Ex-1/2/3 round-trip with real contracts work.)
-_SDK_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
+#   set so the value reaches Layer B unchanged.
+SDK_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
     {"ex_type", "semantic", "produced_at"}
 )
+# Backwards-compatible underscored alias (was the only name pre-2.7).
+_SDK_ENVELOPE_FIELDS: Final[frozenset[str]] = SDK_ENVELOPE_FIELDS
 
 
-def _strip_sdk_envelope(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+def strip_sdk_envelope(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return a payload mapping with SDK envelope fields removed.
 
     Pre-condition: ``semantics.assert_producer_only`` has already validated
     the full ``payload`` (including ex_type/semantic). What we hand to
-    contracts is the WIRE shape (producer-owned fields only), since the
-    contracts Ex payload schemas don't model SDK routing fields.
+    contracts (via ``validate_payload`` -> ``schema.model_validate``) AND
+    what we hand to the backend (via ``validate_then_dispatch``) is the
+    WIRE shape (producer-owned fields only), since the contracts Ex
+    payload schemas don't model SDK routing fields and Layer B will
+    reject extras on ingest.
     """
 
-    if not _SDK_ENVELOPE_FIELDS.intersection(payload):
+    if not SDK_ENVELOPE_FIELDS.intersection(payload):
         return payload
-    return {k: v for k, v in payload.items() if k not in _SDK_ENVELOPE_FIELDS}
+    return {k: v for k, v in payload.items() if k not in SDK_ENVELOPE_FIELDS}
+
+
+# Backwards-compatible underscored alias.
+_strip_sdk_envelope = strip_sdk_envelope
 def _coerce_ex_type(ex_type: str) -> ExType:
     if ex_type not in SUPPORTED_EX_TYPES:
         raise UnknownExTypeError(f"unsupported Ex type: {ex_type!r}")

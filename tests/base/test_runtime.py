@@ -107,16 +107,20 @@ def test_public_submit_and_heartbeat_use_configured_context_runtime() -> None:
 
     assert submit_receipt.accepted is True
     assert submit_receipt.receipt_id == "submit-receipt-1"
-    assert submit_backend.submitted_payloads == (ex2_payload,)
+    # Stage-2.7 follow-up #2: backend gets WIRE shape (envelope stripped).
+    assert submit_backend.submitted_payloads == (
+        {"subsystem_id": "subsystem-demo"},
+    )
     assert heartbeat_receipt.accepted is True
     assert heartbeat_receipt.receipt_id == "heartbeat-receipt-1"
     assert len(heartbeat_backend.calls) == 1
     heartbeat_payload = heartbeat_backend.calls[0]
-    assert heartbeat_payload["ex_type"] == "Ex-0"
-    assert heartbeat_payload["semantic"] == EX0_SEMANTIC
+    # Heartbeat backend receives wire shape — no SDK envelope, status mapped.
+    assert "ex_type" not in heartbeat_payload
+    assert "semantic" not in heartbeat_payload
     assert heartbeat_payload["subsystem_id"] == "subsystem-demo"
     assert heartbeat_payload["version"] == "0.1.0"
-    # SDK "healthy" -> contracts wire "ok" (codex stage-2.7 P1 fix).
+    # SDK "healthy" -> contracts wire "ok".
     assert heartbeat_payload["status"] == "ok"
     assert heartbeat_payload["pending_count"] == 2
 
@@ -183,8 +187,13 @@ def test_scoped_runtime_rejects_nested_reroute_between_subsystems() -> None:
         assert submit(payload_b).receipt_id == "submit-b"
         assert send_heartbeat({"status": "degraded"}).receipt_id == "heartbeat-b"
 
-    assert submit_backend_a.submitted_payloads == (payload_a,)
-    assert submit_backend_b.submitted_payloads == (payload_b,)
+    # Stage-2.7 follow-up #2: backends receive wire shape (envelope stripped).
+    assert submit_backend_a.submitted_payloads == (
+        {"subsystem_id": "subsystem-a"},
+    )
+    assert submit_backend_b.submitted_payloads == (
+        {"subsystem_id": "subsystem-b"},
+    )
     assert len(heartbeat_backend_a.calls) == 1
     assert len(heartbeat_backend_b.calls) == 1
     assert heartbeat_backend_a.calls[0]["subsystem_id"] == "subsystem-a"

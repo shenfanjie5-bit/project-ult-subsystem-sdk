@@ -232,7 +232,104 @@ class TestNoBackendPrivateLeakInReceipts:
             )
 
 
-# ── Red line #5: public.py boundary deny scan (subprocess-isolated) ──
+# ── Red line #5: backend never receives SDK envelope (wire shape only) ──
+
+
+class TestBackendNeverReceivesSdkEnvelope:
+    """Stage-2.7 follow-up #2 (codex review #2 P1): the SDK envelope
+    (``ex_type`` / ``semantic`` / ``produced_at``) is producer-side
+    routing/derivation metadata. It MUST NOT reach the wire, otherwise:
+    - Layer B's contracts.schemas.Ex* model_validate rejects the payload
+      (extra='forbid').
+    - PG queue rows and Kafka messages carry SDK-shape payloads instead
+      of the documented contracts wire shape.
+
+    `validate_then_dispatch` is the single place that strips the envelope
+    between the SDK validator and the backend dispatch. This test exercises
+    both submit-path and heartbeat-path end-to-end and asserts every
+    SDK envelope field is absent from what backends record.
+    """
+
+    def test_submit_client_strips_sdk_envelope_before_backend_submit(self) -> None:
+        from subsystem_sdk.backends.mock import MockSubmitBackend
+        from subsystem_sdk.submit import SubmitClient
+        from subsystem_sdk.validate.engine import SDK_ENVELOPE_FIELDS
+        from subsystem_sdk.validate.result import ValidationResult
+
+        backend = MockSubmitBackend()
+
+        def permissive_validator(payload):
+            # Bypass schema model_validate so we can inspect the raw
+            # strip behavior independent of contracts being installed.
+            return ValidationResult.ok(ex_type="Ex-2", schema_version="v-test")
+
+        receipt = SubmitClient(backend, validator=permissive_validator).submit(
+            {
+                "ex_type": "Ex-2",
+                "semantic": "metadata_or_heartbeat",
+                "produced_at": "2026-01-01T00:00:00Z",
+                "subsystem_id": "test-subsystem",
+            }
+        )
+
+        assert receipt.accepted is True
+        assert len(backend.submitted_payloads) == 1
+        wire = backend.submitted_payloads[0]
+        leaked = SDK_ENVELOPE_FIELDS.intersection(wire)
+        assert not leaked, (
+            f"SDK envelope leaked to submit backend: {sorted(leaked)}; "
+            "validate_then_dispatch must strip envelope before dispatch"
+        )
+        assert wire == {"subsystem_id": "test-subsystem"}
+
+    def test_heartbeat_client_strips_sdk_envelope_before_backend_send(self) -> None:
+        from datetime import UTC, datetime
+
+        from subsystem_sdk.backends.heartbeat import (
+            SubmitBackendHeartbeatAdapter,
+        )
+        from subsystem_sdk.backends.mock import MockSubmitBackend
+        from subsystem_sdk.heartbeat.client import HeartbeatClient
+        from subsystem_sdk.heartbeat.payload import build_ex0_payload
+        from subsystem_sdk.validate.engine import SDK_ENVELOPE_FIELDS
+        from subsystem_sdk.validate.result import ValidationResult
+
+        backend = MockSubmitBackend()
+
+        def permissive_validator(payload):
+            return ValidationResult.ok(ex_type="Ex-0", schema_version="v-test")
+
+        client = HeartbeatClient(
+            SubmitBackendHeartbeatAdapter(backend),
+            validator=permissive_validator,
+        )
+        payload = build_ex0_payload(
+            subsystem_id="hb-test",
+            version="0.0.0",
+            status="healthy",
+            heartbeat_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        # The SDK-built payload DOES carry the envelope (so the SDK can
+        # internally route + boundary-check it). It's the validator-then-
+        # dispatch boundary that strips before the backend sees it.
+        assert "ex_type" in payload and "semantic" in payload
+
+        receipt = client.send_heartbeat(payload)
+        assert receipt.accepted is True
+
+        assert len(backend.submitted_payloads) == 1
+        wire = backend.submitted_payloads[0]
+        leaked = SDK_ENVELOPE_FIELDS.intersection(wire)
+        assert not leaked, (
+            f"SDK envelope leaked to heartbeat backend: {sorted(leaked)}; "
+            "validate_then_dispatch must strip envelope before dispatch"
+        )
+        # Wire shape contains only producer-owned fields.
+        assert wire["subsystem_id"] == "hb-test"
+        assert wire["status"] == "ok"  # SDK "healthy" -> contracts wire "ok"
+
+
+# ── Red line #6: public.py boundary deny scan (subprocess-isolated) ──
 
 _BUSINESS_DOWNSTREAMS = (
     "main_core",

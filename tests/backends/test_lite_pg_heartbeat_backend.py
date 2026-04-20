@@ -111,13 +111,28 @@ def test_lite_pg_heartbeat_adapter_sends_context_ex0_through_submit_path(
     sql, params = cursor.execute_calls[0]
     payload = json.loads(params[0])
     assert 'insert into "subsystem_submit_queue"' in sql
-    assert payload["ex_type"] == "Ex-0"
-    assert payload["semantic"] == EX0_SEMANTIC
+    # Stage-2.7 follow-up #2 (codex review #2 P1): backend MUST receive
+    # the WIRE shape — SDK envelope (ex_type, semantic, produced_at)
+    # stripped by validate_then_dispatch before backend.submit/.send. The
+    # PG queue row therefore matches what contracts.schemas.Ex0Metadata
+    # validates, so Layer B ingest can round-trip without rejection.
+    assert "ex_type" not in payload, (
+        "SDK envelope leaked to PG: validate_then_dispatch must strip "
+        "ex_type before backend dispatch"
+    )
+    assert "semantic" not in payload, (
+        "SDK envelope leaked to PG: validate_then_dispatch must strip "
+        "semantic before backend dispatch"
+    )
+    assert "produced_at" not in payload  # Ex-0 doesn't carry it anyway
     assert payload["subsystem_id"] == "subsystem-demo"
     assert payload["version"] == "0.1.0"
-    # SDK "healthy" -> contracts wire "ok" (codex stage-2.7 P1 fix). The
-    # wire payload going into PG matches contracts.core.types.HeartbeatStatus
-    # so Layer B can round-trip it through Ex0Metadata.
+    # status: SDK "healthy" -> contracts wire "ok"
     assert payload["status"] == "ok"
     assert payload["pending_count"] == 2
+    # Backend-private leak guard: pg_queue_id never appears in public receipt.
     assert "pg_queue_id" not in receipt.model_dump()
+    # Cross-validate: the wire payload PG actually got is what
+    # contracts.schemas.Ex0Metadata accepts (round-trip).
+    contracts_module = pytest.importorskip("contracts.schemas")
+    contracts_module.Ex0Metadata.model_validate(payload)

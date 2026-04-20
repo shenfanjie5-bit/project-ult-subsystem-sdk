@@ -255,3 +255,54 @@ class TestSdkBuildEx0PayloadEndToEnd:
             f"contracts; errors={list(receipt.errors)}"
         )
         assert receipt.errors == ()
+
+    def test_backend_receives_wire_shape_not_sdk_envelope(self) -> None:
+        # Stage-2.7 follow-up #2 (codex review #2 P1): the SDK envelope
+        # (ex_type/semantic/produced_at) MUST be stripped at the dispatch
+        # boundary too — not only at validate. Otherwise PG/Kafka serialize
+        # the envelope onto the wire and Layer B ingest rejects it.
+        # End-to-end check: drive a real heartbeat through the SDK and
+        # assert the MockSubmitBackend (proxied via SubmitBackendHeartbeatAdapter)
+        # records the WIRE shape. Then round-trip that recorded shape through
+        # the real contracts.schemas.Ex0Metadata model — proves Layer B
+        # would accept it without further transformation.
+        from datetime import UTC, datetime
+
+        from contracts.schemas import Ex0Metadata
+
+        from subsystem_sdk.backends.heartbeat import (
+            SubmitBackendHeartbeatAdapter,
+        )
+        from subsystem_sdk.backends.mock import MockSubmitBackend
+        from subsystem_sdk.heartbeat.client import HeartbeatClient
+        from subsystem_sdk.heartbeat.payload import build_ex0_payload
+
+        backend = MockSubmitBackend()
+        client = HeartbeatClient(SubmitBackendHeartbeatAdapter(backend))
+        payload = build_ex0_payload(
+            subsystem_id="wire-shape-test",
+            version="0.0.0",
+            status="healthy",
+            heartbeat_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        receipt = client.send_heartbeat(payload)
+        assert receipt.accepted
+
+        # Backend recorded exactly one payload, and it must NOT contain
+        # any SDK envelope fields.
+        assert len(backend.submitted_payloads) == 1
+        wire_payload = backend.submitted_payloads[0]
+        for envelope_field in ("ex_type", "semantic", "produced_at"):
+            assert envelope_field not in wire_payload, (
+                f"SDK envelope field {envelope_field!r} leaked to backend "
+                f"({wire_payload!r}); validate_then_dispatch must strip the "
+                "envelope BEFORE calling backend.submit/send, otherwise PG/"
+                "Kafka serialize the SDK shape onto the wire and Layer B "
+                "rejects it (codex stage-2.7 review #2 P1)."
+            )
+
+        # Cross-prove: the wire shape that reached the backend round-trips
+        # through real contracts.schemas.Ex0Metadata without modification.
+        validated = Ex0Metadata.model_validate(wire_payload)
+        assert validated.subsystem_id == "wire-shape-test"
+        assert validated.status.value == "ok"
