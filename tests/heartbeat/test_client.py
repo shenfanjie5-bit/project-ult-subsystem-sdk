@@ -18,7 +18,6 @@ class Ex1BusinessPayload(BaseModel):
 
     ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
-    produced_at: str
 
 
 def _install_ex1_contracts(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -31,6 +31,41 @@ _UNKNOWN_SCHEMA_VERSION: Final[str] = "unknown"
 _UNKNOWN_SCHEMA_VERSION_WARNING: Final[str] = (
     "contracts schema version is unavailable; using 'unknown'"
 )
+# SDK-internal "envelope" fields used for routing/derivation inside the SDK
+# but NOT part of the Layer B wire payload schema in ``contracts``. The
+# contracts Ex payload models declare ``extra='forbid'`` — sending these
+# fields through ``schema.model_validate`` would falsely fail validation.
+# Strip them right before model_validate; producer-owned semantic guards
+# already ran above and have already assert_no_ingest_metadata-checked
+# the full payload mapping (including the envelope), so dropping them
+# here only narrows what contracts sees.
+#
+# Members:
+# - ex_type / semantic: SDK routing wrapper around Ex-0 payloads.
+# - produced_at: SDK guard marker the SDK uses to recognize Ex-1/2/3
+#   shape (PRODUCER_OWNED_REQUIRED["Ex-1"]={"subsystem_id","produced_at"}
+#   etc.). contracts.schemas Ex1CandidateFact/Ex2CandidateSignal/
+#   Ex3CandidateGraphDelta currently don't define a produced_at field —
+#   if/when contracts adds it to BaseExPayload, drop it from this strip
+#   set so the value reaches Layer B unchanged. (codex stage-2.7 P1
+#   follow-up: makes Ex-1/2/3 round-trip with real contracts work.)
+_SDK_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"ex_type", "semantic", "produced_at"}
+)
+
+
+def _strip_sdk_envelope(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return a payload mapping with SDK envelope fields removed.
+
+    Pre-condition: ``semantics.assert_producer_only`` has already validated
+    the full ``payload`` (including ex_type/semantic). What we hand to
+    contracts is the WIRE shape (producer-owned fields only), since the
+    contracts Ex payload schemas don't model SDK routing fields.
+    """
+
+    if not _SDK_ENVELOPE_FIELDS.intersection(payload):
+        return payload
+    return {k: v for k, v in payload.items() if k not in _SDK_ENVELOPE_FIELDS}
 def _coerce_ex_type(ex_type: str) -> ExType:
     if ex_type not in SUPPORTED_EX_TYPES:
         raise UnknownExTypeError(f"unsupported Ex type: {ex_type!r}")
@@ -234,7 +269,15 @@ def validate_payload(
 
     try:
         _assert_schema_metadata_matches(schema, ex_type)
-        schema.model_validate(payload_mapping)
+        # CLAUDE.md: contracts is the SINGLE SCHEMA SOURCE OF TRUTH.
+        # SDK envelope fields (ex_type, semantic) are routing-only — strip
+        # them here so the contracts model_validate sees the WIRE shape it
+        # actually defines (producer-owned fields only). Without this,
+        # contracts.schemas.Ex0Metadata's extra='forbid' rejects the SDK's
+        # whole envelope and validate_payload returns invalid even though
+        # the producer fields are well-formed.
+        wire_payload = _strip_sdk_envelope(payload_mapping)
+        schema.model_validate(wire_payload)
     except semantics.SemanticsError as exc:
         return _fail(
             ex_type,

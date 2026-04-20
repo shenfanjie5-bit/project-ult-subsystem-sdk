@@ -66,7 +66,6 @@ class Ex1Payload(BaseModel):
 
     ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
-    produced_at: datetime
     canonical_entity_id: str | None = None
 
 
@@ -76,7 +75,6 @@ class Ex2Payload(BaseModel):
 
     ex_type: Literal["Ex-2"] = "Ex-2"
     subsystem_id: str
-    produced_at: datetime
     canonical_entity_id: str | None = None
 
 
@@ -86,7 +84,6 @@ class Ex3Payload(BaseModel):
 
     ex_type: Literal["Ex-3"] = "Ex-3"
     subsystem_id: str
-    produced_at: datetime
     canonical_entity_id: str | None = None
 
 

@@ -33,7 +33,6 @@ class Ex1Payload(BaseModel):
 
     ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
-    produced_at: str
     canonical_entity_id: str | None = None
 
 
@@ -43,7 +42,6 @@ class Ex2Payload(BaseModel):
 
     ex_type: Literal["Ex-2"] = "Ex-2"
     subsystem_id: str
-    produced_at: str
 
 
 class Ex3Payload(BaseModel):
@@ -52,7 +50,6 @@ class Ex3Payload(BaseModel):
 
     ex_type: Literal["Ex-3"] = "Ex-3"
     subsystem_id: str
-    produced_at: str
 
 
 class RecordingLookup:
@@ -129,13 +126,18 @@ def test_report_for_valid_result_has_stable_empty_sections() -> None:
 
 
 def test_report_for_invalid_result_includes_field_errors_only() -> None:
-    result = validate_payload(_payload("Ex-1", produced_at=["not", "a", "string"]))
+    # Stage-2.7 P1 follow-up: ``produced_at`` is now SDK envelope and is
+    # stripped before contracts.model_validate. Use ``subsystem_id`` (a real
+    # producer-owned field) to provoke a Pydantic type error instead.
+    result = validate_payload(_payload("Ex-1", subsystem_id=["not", "a", "string"]))
 
     report = richer_validation_report(result)
 
     assert "status: invalid" in report
     assert "field_errors:" in report
-    assert "produced_at" in report
+    # Stage-2.7 P1 follow-up: assert on the actual offending field name
+    # (subsystem_id) since that is what we now use to provoke invalid.
+    assert "subsystem_id" in report
     assert "warnings:\n  - none" in report
     assert "preflight:\n  checked: false" in report
 
@@ -218,8 +220,11 @@ def test_validate_payload_default_skip_leaves_preflight_empty() -> None:
 def test_validate_payload_does_not_preflight_invalid_payloads() -> None:
     lookup = RecordingLookup()
 
+    # Stage-2.7 P1 follow-up: ``produced_at`` is now SDK envelope and is
+    # stripped before contracts.model_validate. Use ``subsystem_id`` to
+    # force the schema-invalid path.
     result = validate_payload(
-        _payload("Ex-1", produced_at=["bad"], canonical_entity_id="missing-entity"),
+        _payload("Ex-1", subsystem_id=["bad"], canonical_entity_id="missing-entity"),
         entity_lookup=lookup,
         preflight_policy="warn",
     )

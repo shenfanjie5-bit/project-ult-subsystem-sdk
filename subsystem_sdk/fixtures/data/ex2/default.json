@@ -1,25 +1,43 @@
 {
   "bundle_name": "ex2/default",
   "ex_type": "Ex-2",
-  "notes": "Default Ex-2 producer examples for SDK contract roundtrip tests.",
+  "notes": "Default Ex-2 producer examples for SDK contract roundtrip tests. Stage-2.7 P1 follow-up: regenerated to satisfy contracts.schemas.Ex2CandidateSignal (SignalId/signal_type/Direction/Magnitude/affected_entities/affected_sectors/time_horizon/evidence/Confidence). produced_at + ex_type are SDK envelope fields stripped before contracts.model_validate.",
   "valid_examples": [
     {
       "name": "producer-minimal-a",
       "payload": {
         "ex_type": "Ex-2",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "signal_id": "signal-placeholder-a",
+        "signal_type": "trend_breakout",
+        "direction": "bullish",
+        "magnitude": 0.8,
+        "affected_entities": ["ENT_STOCK_PLACEHOLDER"],
+        "affected_sectors": ["SECTOR_PLACEHOLDER"],
+        "time_horizon": "intraday",
+        "evidence": ["evidence-placeholder-a"],
+        "confidence": 0.85
       },
-      "notes": "Valid Ex-2 producer payload using placeholder subsystem data."
+      "notes": "Minimal valid Ex-2 candidate signal payload covering every required contracts.schemas.Ex2CandidateSignal field; direction is the contracts Direction enum (bullish/bearish/neutral)."
     },
     {
       "name": "producer-minimal-b",
       "payload": {
         "ex_type": "Ex-2",
         "subsystem_id": "subsystem-placeholder-alt",
-        "produced_at": "2026-04-17T00:01:00Z"
+        "produced_at": "2026-04-17T00:01:00Z",
+        "signal_id": "signal-placeholder-b",
+        "signal_type": "mean_reversion",
+        "direction": "bearish",
+        "magnitude": 0.6,
+        "affected_entities": ["ENT_STOCK_PLACEHOLDER_B", "ENT_STOCK_PLACEHOLDER_C"],
+        "affected_sectors": ["SECTOR_PLACEHOLDER_B"],
+        "time_horizon": "swing",
+        "evidence": ["evidence-placeholder-b1", "evidence-placeholder-b2"],
+        "confidence": 0.7
       },
-      "notes": "Valid Ex-2 producer payload with a second placeholder timestamp."
+      "notes": "Second valid Ex-2 candidate signal payload with multiple affected entities + evidence."
     }
   ],
   "invalid_examples": [
@@ -29,6 +47,15 @@
         "ex_type": "Ex-2",
         "subsystem_id": "subsystem-placeholder",
         "produced_at": "2026-04-17T00:00:00Z",
+        "signal_id": "signal-placeholder-a",
+        "signal_type": "trend_breakout",
+        "direction": "bullish",
+        "magnitude": 0.8,
+        "affected_entities": ["ENT_STOCK_PLACEHOLDER"],
+        "affected_sectors": ["SECTOR_PLACEHOLDER"],
+        "time_horizon": "intraday",
+        "evidence": ["evidence-placeholder-a"],
+        "confidence": 0.85,
         "ingest_seq": 10
       },
       "notes": "Ingest metadata guard: ingest_seq is owned by ingest and must not appear in producer payloads."
@@ -37,7 +64,16 @@
       "name": "missing-subsystem-id",
       "payload": {
         "ex_type": "Ex-2",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "signal_id": "signal-placeholder-a",
+        "signal_type": "trend_breakout",
+        "direction": "bullish",
+        "magnitude": 0.8,
+        "affected_entities": ["ENT_STOCK_PLACEHOLDER"],
+        "affected_sectors": ["SECTOR_PLACEHOLDER"],
+        "time_horizon": "intraday",
+        "evidence": ["evidence-placeholder-a"],
+        "confidence": 0.85
       },
       "notes": "Producer-owned required field guard: Ex-2 requires subsystem_id."
     },
@@ -46,7 +82,16 @@
       "payload": {
         "ex_type": "Ex-9",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "signal_id": "signal-placeholder-a",
+        "signal_type": "trend_breakout",
+        "direction": "bullish",
+        "magnitude": 0.8,
+        "affected_entities": ["ENT_STOCK_PLACEHOLDER"],
+        "affected_sectors": ["SECTOR_PLACEHOLDER"],
+        "time_horizon": "intraday",
+        "evidence": ["evidence-placeholder-a"],
+        "confidence": 0.85
       },
       "notes": "Unknown Ex type guard: Ex-9 is not a supported producer payload type."
     },
@@ -55,7 +100,16 @@
       "payload": {
         "ex_type": "Ex-0",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "signal_id": "signal-placeholder-a",
+        "signal_type": "trend_breakout",
+        "direction": "bullish",
+        "magnitude": 0.8,
+        "affected_entities": ["ENT_STOCK_PLACEHOLDER"],
+        "affected_sectors": ["SECTOR_PLACEHOLDER"],
+        "time_horizon": "intraday",
+        "evidence": ["evidence-placeholder-a"],
+        "confidence": 0.85
       },
       "notes": "Ex type mismatch guard: produced_at payloads must not be declared as Ex-0."
     }

@@ -40,31 +40,58 @@ class FakeEx0Schema(BaseModel):
 
 
 class FakeEx1Schema(BaseModel):
+    """Mirror real ``contracts.schemas.Ex1CandidateFact`` shape so the
+    fake accepts the full packaged Ex-1 fixture (regenerated in stage-2.7
+    P1 follow-up). canonical_entity_id is an SDK preflight-side optional
+    field tested by the reference smoke harness — kept here as optional.
+    """
+
     SCHEMA_VERSION: ClassVar[str] = "v-ex1-reference"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
-    produced_at: str
+    fact_id: str
+    entity_id: str
+    fact_type: str
+    fact_content: dict
+    confidence: float
+    source_reference: dict
+    extracted_at: str
     canonical_entity_id: str | None = None
 
 
 class FakeEx2Schema(BaseModel):
+    """Mirror real ``contracts.schemas.Ex2CandidateSignal`` shape."""
+
     SCHEMA_VERSION: ClassVar[str] = "v-ex2-reference"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-2"] = "Ex-2"
     subsystem_id: str
-    produced_at: str
+    signal_id: str
+    signal_type: str
+    direction: str
+    magnitude: float
+    affected_entities: list[str]
+    affected_sectors: list[str]
+    time_horizon: str
+    evidence: list[str]
+    confidence: float
 
 
 class FakeEx3Schema(BaseModel):
+    """Mirror real ``contracts.schemas.Ex3CandidateGraphDelta`` shape."""
+
     SCHEMA_VERSION: ClassVar[str] = "v-ex3-reference"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-3"] = "Ex-3"
     subsystem_id: str
-    produced_at: str
+    delta_id: str
+    delta_type: str
+    source_node: str
+    target_node: str
+    relation_type: str
+    properties: dict
+    evidence: list[str]
 
 
 class FakePgRecorder:
@@ -158,6 +185,10 @@ def _import_generated(
 
 
 def _ex1_unresolved_bundle(name: str) -> ContractExampleBundle:
+    # Stage-2.7 P1 follow-up: Ex-1 payload now must satisfy the full
+    # contracts.schemas.Ex1CandidateFact schema (mirrored in FakeEx1Schema).
+    # produced_at + ex_type are SDK envelope, stripped before model_validate.
+    # canonical_entity_id is the optional preflight-side field.
     return ContractExampleBundle(
         bundle_name=name,
         ex_type="Ex-1",
@@ -168,6 +199,13 @@ def _ex1_unresolved_bundle(name: str) -> ContractExampleBundle:
                     "ex_type": "Ex-1",
                     "subsystem_id": "subsystem-placeholder",
                     "produced_at": "2026-04-18T00:00:00Z",
+                    "fact_id": "fact-unresolved-a",
+                    "entity_id": "ENT_PLACEHOLDER",
+                    "fact_type": "earnings_release",
+                    "fact_content": {"placeholder_field": "placeholder-value"},
+                    "confidence": 0.9,
+                    "source_reference": {"source": "placeholder-source"},
+                    "extracted_at": "2026-04-18T00:00:00Z",
                     "canonical_entity_id": "missing-entity",
                 },
                 notes="Valid contract payload with an unresolved entity ref.",
@@ -243,11 +281,23 @@ def test_generated_reference_context_works_with_base_subsystem_wrapper(
     backend = MockBackend()
     subsystem = BaseSubsystem(generated.build_context(backend))
 
+    # Stage-2.7 P1 follow-up: Ex-2 payload now must satisfy the full
+    # contracts.schemas.Ex2CandidateSignal schema (mirrored in FakeEx2Schema).
+    # produced_at + ex_type are SDK envelope, stripped before model_validate.
     receipt = subsystem.submit(
         {
             "ex_type": "Ex-2",
             "subsystem_id": "subsystem-reference",
             "produced_at": "2026-04-17T00:00:00Z",
+            "signal_id": "signal-ref-a",
+            "signal_type": "trend_breakout",
+            "direction": "bullish",
+            "magnitude": 0.5,
+            "affected_entities": ["ENT_REF"],
+            "affected_sectors": ["SECTOR_REF"],
+            "time_horizon": "intraday",
+            "evidence": ["evidence-ref-a"],
+            "confidence": 0.8,
         }
     )
 
@@ -288,8 +338,15 @@ def test_reference_smoke_records_unresolved_ex1_preflight_warning(
     assert len(receipts) == 2
     assert receipts[1].accepted is True
     assert receipts[1].errors == ()
+    # Stage-2.7 P1 follow-up: Ex-1 payload now also carries `entity_id`
+    # (required by real contracts). The preflight checks BOTH entity_id and
+    # canonical_entity_id, so both placeholder refs surface as unresolved
+    # under the "lookup nothing exists" MissingEntityLookup. Order is
+    # alphabetical (ENT_PLACEHOLDER, missing-entity) per
+    # run_entity_preflight's stable sort.
     assert receipts[1].warnings == (
-        "entity preflight found unresolved reference(s): missing-entity",
+        "entity preflight found unresolved reference(s): "
+        "ENT_PLACEHOLDER, missing-entity",
     )
-    assert lookup.calls == [("missing-entity",)]
+    assert lookup.calls == [("ENT_PLACEHOLDER", "missing-entity")]
     assert tuple(event.kind for event in backend.events) == ("heartbeat", "submit")

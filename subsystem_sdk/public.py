@@ -164,22 +164,30 @@ class _SmokeHook:
 
         from datetime import UTC, datetime
 
+        from subsystem_sdk.backends.heartbeat import (
+            SubmitBackendHeartbeatAdapter,
+        )
+        from subsystem_sdk.backends.mock import MockSubmitBackend
+        from subsystem_sdk.heartbeat.client import HeartbeatClient
         from subsystem_sdk.heartbeat.payload import build_ex0_payload
+        from subsystem_sdk.validate.engine import validate_payload
 
-        # Smoke deliberately exercises ONLY the SDK-internal semantic
-        # guards + payload builder + receipt contract — NOT the optional
-        # contracts.schemas Ex0Metadata model_validate path. The SDK's
-        # `validate_payload` calls into contracts' Ex0Metadata, which
-        # currently rejects the SDK's ex_type/semantic wrapping fields and
-        # uses a different HeartbeatStatus enum ({ok,degraded,failed} vs
-        # SDK's {healthy,degraded,unhealthy}). That cross-repo schema
-        # mismatch is documented + parametrized in
-        # tests/contract/test_contracts_alignment.py — fixing it is out
-        # of stage 2.7's scope (SDK boundary refactor, not test-baseline).
-        # Smoke stays useful by asserting the guards the SDK fully owns.
+        # Smoke exercises the FULL Ex-0 path the SDK exposes to producers:
+        #   build_ex0_payload  →  validate_payload  →
+        #   HeartbeatClient.send_heartbeat  →  SubmitReceipt
+        # If contracts is installed, validate_payload model_validates the
+        # wire payload against ``contracts.schemas.Ex0Metadata`` — that
+        # is the path Layer B itself uses, so the smoke is a true round-
+        # trip check of (SDK builder + SDK validator + contracts schema +
+        # SDK receipt contract). If contracts is NOT installed (offline
+        # dev venv), validate_payload reports an "unavailable" field
+        # error and the smoke fails — that's correct: a SDK without
+        # contracts can't actually send Ex-0 anywhere usable.
 
-        # 1. Build a clean Ex-0 producer payload (using the SDK's own
-        #    builder; status enum is the SDK's HeartbeatState literal).
+        # 1. Build the wire-format Ex-0 payload (status enum mapped to
+        #    contracts.core.types.HeartbeatStatus values; SDK envelope
+        #    fields stay for SDK-internal routing and get stripped at
+        #    the validate_payload boundary).
         ex0_payload = build_ex0_payload(
             subsystem_id="smoke-subsystem",
             version="0.0.0",
@@ -200,28 +208,53 @@ class _SmokeHook:
                 "profile_id": profile_id,
             }
 
-        # 3. Negative path — assert_no_ingest_metadata MUST raise on any
-        #    of the forbidden fields. Proves the guard hasn't been
-        #    silently weakened. We only run two of the three known
-        #    fields here for speed; the unit tier covers the full set.
-        for forbidden_field in ("submitted_at", "ingest_seq"):
-            polluted = dict(ex0_payload, **{forbidden_field: "leak"})
-            try:
-                assert_no_ingest_metadata(polluted)
-            except IngestMetadataLeakError:
-                continue
+        # 3. validate_payload — REAL contracts model_validate (envelope
+        #    stripped inside the engine before model_validate is called).
+        #    Failing here means the SDK's wire contract with Layer B is
+        #    broken; smoke MUST surface this, not paper over it.
+        validation = validate_payload(ex0_payload)
+        if not validation.is_valid:
             return {
                 "passed": False,
                 "failure_reason": (
-                    f"ingest-metadata guard let {forbidden_field!r} through; "
-                    "iron rule violation (CLAUDE.md: producer payload must "
-                    "never contain ingest metadata)"
+                    "validate_payload rejected SDK-built Ex-0 wire payload; "
+                    "this is a real cross-repo SDK<->contracts incompatibility, "
+                    "NOT a smoke setup issue. Field errors: "
+                    f"{list(validation.field_errors)}"
+                ),
+                "profile_id": profile_id,
+                "details": {
+                    "validation_ex_type": validation.ex_type,
+                    "validation_schema_version": validation.schema_version,
+                    "wire_payload_keys": sorted(ex0_payload.keys()),
+                },
+            }
+
+        # 4. HeartbeatClient.send_heartbeat through a MockSubmitBackend —
+        #    end-to-end the producer-facing path including receipt
+        #    normalization. MockSubmitBackend is in-process (no IO), so
+        #    this is fast and transport-agnostic.
+        backend = MockSubmitBackend()
+        client = HeartbeatClient(SubmitBackendHeartbeatAdapter(backend))
+        try:
+            receipt = client.send_heartbeat(ex0_payload)
+        except Exception as exc:
+            return {
+                "passed": False,
+                "failure_reason": f"send_heartbeat raised: {exc!r}",
+                "profile_id": profile_id,
+            }
+        if not receipt.accepted:
+            return {
+                "passed": False,
+                "failure_reason": (
+                    f"send_heartbeat receipt not accepted: errors={list(receipt.errors)}"
                 ),
                 "profile_id": profile_id,
             }
 
-        # 4. Receipt-shape sanity: RESERVED_PRIVATE_KEYS must be non-empty
-        #    and not intersect with INGEST_METADATA_FIELDS (different boundary
+        # 5. Receipt-shape sanity: RESERVED_PRIVATE_KEYS must be non-empty
+        #    and disjoint from INGEST_METADATA_FIELDS (different boundary
         #    layers — backend-private leak vs producer-side ingest leak).
         if not RESERVED_PRIVATE_KEYS:
             return {
@@ -239,10 +272,35 @@ class _SmokeHook:
                 "profile_id": profile_id,
             }
 
+        # 6. Negative-path guard exercise — assert_no_ingest_metadata MUST
+        #    raise on each of the forbidden fields. Anchors the iron rule
+        #    that the guard hasn't been silently weakened.
+        for forbidden_field in ("submitted_at", "ingest_seq"):
+            polluted = dict(ex0_payload, **{forbidden_field: "leak"})
+            try:
+                assert_no_ingest_metadata(polluted)
+            except IngestMetadataLeakError:
+                continue
+            return {
+                "passed": False,
+                "failure_reason": (
+                    f"ingest-metadata guard let {forbidden_field!r} through; "
+                    "iron rule violation (CLAUDE.md: producer payload must "
+                    "never contain ingest metadata)"
+                ),
+                "profile_id": profile_id,
+            }
+
         return {
             "passed": True,
             "profile_id": profile_id,
             "details": {
+                "validation_ex_type": validation.ex_type,
+                "validation_schema_version": validation.schema_version,
+                "receipt_id": receipt.receipt_id,
+                "receipt_backend_kind": receipt.backend_kind,
+                "receipt_validator_version": receipt.validator_version,
+                "wire_payload_status": ex0_payload["status"],
                 "ex0_payload_fields": sorted(ex0_payload.keys()),
                 "ingest_metadata_fields_checked": ["submitted_at", "ingest_seq"],
                 "reserved_private_keys_count": len(RESERVED_PRIVATE_KEYS),

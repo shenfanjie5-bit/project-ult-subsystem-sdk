@@ -24,14 +24,27 @@ Three invariants:
    ``reject_ingest_metadata`` validator wired (cross-checked by an
    actual instantiation attempt with a forbidden field).
 
-What this tier does NOT test (out of stage 2.7 scope, documented for
-future work): the SDK's ``build_ex0_payload`` produces a payload with
-``ex_type``/``semantic`` wrapper fields and uses the SDK's HeartbeatState
-literal ({healthy,degraded,unhealthy}), but contracts' ``Ex0Metadata``
-uses ``HeartbeatStatus`` ({ok,degraded,failed}) and rejects extras. Real
-SDK→contracts model_validate today FAILS for that reason. This is a
-known cross-repo design tension that needs an SDK-side payload shape
-refactor in a separate milestone, not a stage-2 test-baseline change.
+Stage 2.7 follow-up (codex P1 fix): the SDK's ``build_ex0_payload`` ↔
+contracts' ``Ex0Metadata`` round-trip used to fail for two reasons:
+
+1. SDK output included ``ex_type``/``semantic`` envelope fields, but
+   ``Ex0Metadata`` has ``extra='forbid'`` and rejected them.
+2. SDK output used ``status='healthy'`` (HeartbeatState literal), but
+   ``Ex0Metadata.status`` is ``contracts.core.types.HeartbeatStatus``
+   which only accepts ``{ok, degraded, failed}``.
+
+Both are now fixed at the SDK boundary:
+
+- ``validate_payload`` strips SDK envelope (``ex_type`` / ``semantic``)
+  before ``schema.model_validate`` (validate/engine.py).
+- ``build_ex0_payload`` maps SDK's ``HeartbeatState`` to contracts'
+  ``HeartbeatStatus`` enum on wire output via
+  ``HEARTBEAT_STATE_TO_CONTRACTS_STATUS`` (heartbeat/payload.py).
+
+The user-facing API still accepts ``"healthy"``/``"degraded"``/
+``"unhealthy"`` (no breaking change to SDK callers); the wire payload
+emitted to Layer B is contracts-compliant. ``TestSdkBuildEx0PayloadEndToEnd``
+locks this in.
 """
 
 from __future__ import annotations
@@ -142,28 +155,24 @@ class TestIngestMetadataGuardsAligned:
             )
 
 
-class TestKnownDesignTensionDocumented:
-    """Document the SDK ↔ contracts model_validate mismatch that public.py's
-    smoke hook deliberately works around. Once an SDK refactor reconciles
-    payload shape + status enum, REMOVE these xfail tests — they are
-    drift detectors, not goal posts.
+class TestSdkBuildEx0PayloadEndToEnd:
+    """SDK builder → SDK validator → real contracts model — the path that
+    used to be broken (codex stage-2.7 P1) is now locked in as a hard
+    requirement. If anyone drifts the SDK envelope strip in
+    ``validate/engine.py`` or the HeartbeatState→HeartbeatStatus map in
+    ``heartbeat/payload.py``, this test fails immediately.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Known stage-2.7 cross-repo design tension: SDK's "
-            "build_ex0_payload wraps with ex_type/semantic + uses "
-            "{healthy,degraded,unhealthy} HeartbeatState. contracts' "
-            "Ex0Metadata rejects extras + uses {ok,degraded,failed} "
-            "HeartbeatStatus. Reconciling needs a separate SDK milestone, "
-            "not stage 2 test-baseline. xfail strict=True so the day "
-            "someone fixes it, this test starts passing and yells at us "
-            "to remove the xfail (and the smoke-hook workaround)."
-        ),
+    @pytest.mark.parametrize(
+        "sdk_state, expected_wire_status",
+        [
+            ("healthy", "ok"),
+            ("degraded", "degraded"),
+            ("unhealthy", "failed"),
+        ],
     )
     def test_sdk_build_ex0_payload_validates_against_contracts_ex0metadata(
-        self,
+        self, sdk_state: str, expected_wire_status: str
     ) -> None:
         from datetime import UTC, datetime
 
@@ -174,10 +183,75 @@ class TestKnownDesignTensionDocumented:
         payload = build_ex0_payload(
             subsystem_id="test-subsystem",
             version="0.0.0",
+            status=sdk_state,
+            heartbeat_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        # The SDK envelope (ex_type, semantic) is still present in the
+        # SDK-side payload mapping for routing purposes; validate_payload
+        # strips them before model_validate. Here we mirror that strip
+        # to assert what contracts directly receives is wire-compliant.
+        wire = {k: v for k, v in payload.items() if k not in ("ex_type", "semantic")}
+        # Status must already be in contracts' HeartbeatStatus enum.
+        assert wire["status"] == expected_wire_status, (
+            f"build_ex0_payload(status={sdk_state!r}) emitted wire status "
+            f"{wire['status']!r}; expected {expected_wire_status!r}. "
+            "HEARTBEAT_STATE_TO_CONTRACTS_STATUS map drifted."
+        )
+        # And contracts must accept the wire payload without raising.
+        validated = Ex0Metadata.model_validate(wire)
+        assert validated.status.value == expected_wire_status
+
+    def test_validate_payload_accepts_sdk_built_payload_against_real_contracts(
+        self,
+    ) -> None:
+        # Full SDK path: build → validate. The validator strips envelope
+        # internally before calling Ex0Metadata.model_validate. If
+        # validate_payload returns invalid here, the SDK is shipping a
+        # broken contract with Layer B (codex stage-2.7 P1).
+        from datetime import UTC, datetime
+
+        from subsystem_sdk.heartbeat.payload import build_ex0_payload
+        from subsystem_sdk.validate.engine import validate_payload
+
+        payload = build_ex0_payload(
+            subsystem_id="test-subsystem",
+            version="0.0.0",
             status="healthy",
             heartbeat_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
-        # Currently raises pydantic.ValidationError because:
-        # - "ex_type"/"semantic" are extras (forbidden on Ex0Metadata)
-        # - "healthy" not in {"ok", "degraded", "failed"}
-        Ex0Metadata.model_validate(payload)
+        result = validate_payload(payload)
+        assert result.is_valid, (
+            f"validate_payload rejected SDK-built Ex-0 against real "
+            f"contracts; field_errors={list(result.field_errors)}"
+        )
+        assert result.ex_type == "Ex-0"
+
+    def test_send_heartbeat_round_trip_returns_accepted_against_real_contracts(
+        self,
+    ) -> None:
+        # End-to-end: build → validate → dispatch through MockSubmitBackend.
+        # This is the exact path codex reproduced as broken. Now must
+        # come back with receipt.accepted=True + zero errors.
+        from datetime import UTC, datetime
+
+        from subsystem_sdk.backends.heartbeat import (
+            SubmitBackendHeartbeatAdapter,
+        )
+        from subsystem_sdk.backends.mock import MockSubmitBackend
+        from subsystem_sdk.heartbeat.client import HeartbeatClient
+        from subsystem_sdk.heartbeat.payload import build_ex0_payload
+
+        backend = MockSubmitBackend()
+        client = HeartbeatClient(SubmitBackendHeartbeatAdapter(backend))
+        payload = build_ex0_payload(
+            subsystem_id="test-subsystem",
+            version="0.0.0",
+            status="healthy",
+            heartbeat_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        receipt = client.send_heartbeat(payload)
+        assert receipt.accepted, (
+            f"send_heartbeat did not accept SDK-built Ex-0 against real "
+            f"contracts; errors={list(receipt.errors)}"
+        )
+        assert receipt.errors == ()

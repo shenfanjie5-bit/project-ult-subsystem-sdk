@@ -11,11 +11,21 @@ from subsystem_sdk.validate import registry
 from subsystem_sdk.validate.engine import validate_payload
 
 
+"""Test-only fake contract schemas.
+
+Stage-2.7 P1 follow-up: these mirror the real ``contracts.schemas.Ex*``
+shape (extra='forbid', NO ``ex_type`` / ``semantic`` / ``produced_at``
+fields — those are SDK envelope, stripped by
+``validate_payload._strip_sdk_envelope`` before ``schema.model_validate``).
+If the fakes regrow envelope fields, they stop mirroring real contracts
+and start hiding bugs (which is exactly what codex stage-2.7 P2 flagged).
+"""
+
+
 class Ex0Payload(BaseModel):
     SCHEMA_VERSION: ClassVar[str] = "v-ex0"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-0"] = "Ex-0"
     subsystem_id: str
     version: str
     heartbeat_at: str
@@ -26,27 +36,21 @@ class Ex1Payload(BaseModel):
     SCHEMA_VERSION: ClassVar[str] = "v-ex1"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
-    produced_at: str
 
 
 class Ex2Payload(BaseModel):
     SCHEMA_VERSION: ClassVar[str] = "v-ex2"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-2"] = "Ex-2"
     subsystem_id: str
-    produced_at: str
 
 
 class Ex3Payload(BaseModel):
     SCHEMA_VERSION: ClassVar[str] = "v-ex3"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-3"] = "Ex-3"
     subsystem_id: str
-    produced_at: str
 
 
 def _schemas() -> dict[str, type[BaseModel]]:
@@ -111,12 +115,17 @@ def test_validate_payload_returns_schema_errors(
 ) -> None:
     _install_contracts(monkeypatch)
 
-    result = validate_payload(_payload("Ex-1") | {"produced_at": ["not", "a", "str"]})
+    # Stage-2.7 P1 follow-up: ``produced_at`` is now SDK envelope and is
+    # stripped by validate_payload before schema.model_validate, so we
+    # can't trigger a contracts-level schema error via that field.
+    # ``subsystem_id`` IS a real producer-owned field that contracts
+    # validates, so set it to a list to force a Pydantic type error.
+    result = validate_payload(_payload("Ex-1") | {"subsystem_id": ["not", "a", "str"]})
 
     assert result.is_valid is False
     assert result.ex_type == "Ex-1"
     assert result.schema_version == "v-ex1"
-    assert any("produced_at" in error for error in result.field_errors)
+    assert any("subsystem_id" in error for error in result.field_errors)
 
 
 def test_validate_payload_returns_contracts_unavailable_failure(

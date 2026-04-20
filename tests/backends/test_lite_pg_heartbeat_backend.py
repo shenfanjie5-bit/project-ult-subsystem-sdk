@@ -115,6 +115,9 @@ def test_lite_pg_heartbeat_adapter_sends_context_ex0_through_submit_path(
     assert payload["semantic"] == EX0_SEMANTIC
     assert payload["subsystem_id"] == "subsystem-demo"
     assert payload["version"] == "0.1.0"
-    assert payload["status"] == "healthy"
+    # SDK "healthy" -> contracts wire "ok" (codex stage-2.7 P1 fix). The
+    # wire payload going into PG matches contracts.core.types.HeartbeatStatus
+    # so Layer B can round-trip it through Ex0Metadata.
+    assert payload["status"] == "ok"
     assert payload["pending_count"] == 2
     assert "pg_queue_id" not in receipt.model_dump()

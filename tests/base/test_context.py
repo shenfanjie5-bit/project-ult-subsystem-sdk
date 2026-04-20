@@ -295,7 +295,8 @@ def test_context_send_heartbeat_builds_ex0_payload_and_delegates() -> None:
     assert payload["semantic"] == EX0_SEMANTIC
     assert payload["subsystem_id"] == "subsystem-demo"
     assert payload["version"] == "0.1.0"
-    assert payload["status"] == "healthy"
+    # SDK "healthy" -> contracts wire "ok" (codex stage-2.7 P1 fix).
+    assert payload["status"] == "ok"
 
 
 def test_context_send_heartbeat_accepts_status_mapping() -> None:

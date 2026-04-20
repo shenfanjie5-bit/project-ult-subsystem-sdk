@@ -44,6 +44,16 @@ class RaisingLookup:
 
 
 class Ex1PayloadModel(BaseModel):
+    """Test data class for ``run_entity_preflight`` (NOT a contracts
+    schema). The SDK preflight uses ``produced_at`` as a marker to
+    recognize Ex-1/2/3 shape (see semantics._PRODUCED_SCHEMA_MARKERS),
+    so this test model keeps it. ``validate_payload`` strips it before
+    contracts model_validate — that strip path is exercised in
+    test_engine.py / test_report.py / test_contracts_alignment.py, NOT
+    here. ``ex_type`` is kept defaulted so the routing identifier is
+    explicit.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     ex_type: Literal["Ex-1"] = "Ex-1"

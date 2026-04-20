@@ -1,25 +1,39 @@
 {
   "bundle_name": "ex3/default",
   "ex_type": "Ex-3",
-  "notes": "Default Ex-3 producer examples for SDK contract roundtrip tests.",
+  "notes": "Default Ex-3 producer examples for SDK contract roundtrip tests. Stage-2.7 P1 follow-up: regenerated to satisfy contracts.schemas.Ex3CandidateGraphDelta (DeltaId/delta_type/source_node NodeId/target_node NodeId/relation_type/properties/evidence). produced_at + ex_type are SDK envelope fields stripped before contracts.model_validate.",
   "valid_examples": [
     {
       "name": "producer-minimal-a",
       "payload": {
         "ex_type": "Ex-3",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "delta_id": "delta-placeholder-a",
+        "delta_type": "edge_add",
+        "source_node": "ENT_STOCK_PLACEHOLDER_SRC",
+        "target_node": "ENT_STOCK_PLACEHOLDER_DST",
+        "relation_type": "supplier_of",
+        "properties": {"placeholder_field": "placeholder-value"},
+        "evidence": ["evidence-placeholder-a"]
       },
-      "notes": "Valid Ex-3 producer payload using placeholder subsystem data."
+      "notes": "Minimal valid Ex-3 candidate graph delta payload covering every required contracts.schemas.Ex3CandidateGraphDelta field."
     },
     {
       "name": "producer-minimal-b",
       "payload": {
         "ex_type": "Ex-3",
         "subsystem_id": "subsystem-placeholder-alt",
-        "produced_at": "2026-04-17T00:01:00Z"
+        "produced_at": "2026-04-17T00:01:00Z",
+        "delta_id": "delta-placeholder-b",
+        "delta_type": "edge_remove",
+        "source_node": "ENT_STOCK_PLACEHOLDER_SRC_B",
+        "target_node": "ENT_STOCK_PLACEHOLDER_DST_B",
+        "relation_type": "competitor_of",
+        "properties": {"alt_placeholder_field": "alt-placeholder-value"},
+        "evidence": ["evidence-placeholder-b1", "evidence-placeholder-b2"]
       },
-      "notes": "Valid Ex-3 producer payload with a second placeholder timestamp."
+      "notes": "Second valid Ex-3 candidate graph delta payload with multiple evidence references."
     }
   ],
   "invalid_examples": [
@@ -29,6 +43,13 @@
         "ex_type": "Ex-3",
         "subsystem_id": "subsystem-placeholder",
         "produced_at": "2026-04-17T00:00:00Z",
+        "delta_id": "delta-placeholder-a",
+        "delta_type": "edge_add",
+        "source_node": "ENT_STOCK_PLACEHOLDER_SRC",
+        "target_node": "ENT_STOCK_PLACEHOLDER_DST",
+        "relation_type": "supplier_of",
+        "properties": {"placeholder_field": "placeholder-value"},
+        "evidence": ["evidence-placeholder-a"],
         "layer_b_receipt_id": "receipt-placeholder"
       },
       "notes": "Ingest metadata guard: layer_b_receipt_id is owned by ingest and must not appear in producer payloads."
@@ -37,16 +58,30 @@
       "name": "missing-produced-at",
       "payload": {
         "ex_type": "Ex-3",
-        "subsystem_id": "subsystem-placeholder"
+        "subsystem_id": "subsystem-placeholder",
+        "delta_id": "delta-placeholder-a",
+        "delta_type": "edge_add",
+        "source_node": "ENT_STOCK_PLACEHOLDER_SRC",
+        "target_node": "ENT_STOCK_PLACEHOLDER_DST",
+        "relation_type": "supplier_of",
+        "properties": {"placeholder_field": "placeholder-value"},
+        "evidence": ["evidence-placeholder-a"]
       },
-      "notes": "Producer-owned required field guard: Ex-3 requires produced_at."
+      "notes": "Producer-owned required field guard: SDK Ex-3 requires produced_at for routing even though it's stripped before contracts.model_validate."
     },
     {
       "name": "unknown-ex-type",
       "payload": {
         "ex_type": "Ex-9",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "delta_id": "delta-placeholder-a",
+        "delta_type": "edge_add",
+        "source_node": "ENT_STOCK_PLACEHOLDER_SRC",
+        "target_node": "ENT_STOCK_PLACEHOLDER_DST",
+        "relation_type": "supplier_of",
+        "properties": {"placeholder_field": "placeholder-value"},
+        "evidence": ["evidence-placeholder-a"]
       },
       "notes": "Unknown Ex type guard: Ex-9 is not a supported producer payload type."
     },
@@ -55,7 +90,14 @@
       "payload": {
         "ex_type": "Ex-0",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "delta_id": "delta-placeholder-a",
+        "delta_type": "edge_add",
+        "source_node": "ENT_STOCK_PLACEHOLDER_SRC",
+        "target_node": "ENT_STOCK_PLACEHOLDER_DST",
+        "relation_type": "supplier_of",
+        "properties": {"placeholder_field": "placeholder-value"},
+        "evidence": ["evidence-placeholder-a"]
       },
       "notes": "Ex type mismatch guard: produced_at payloads must not be declared as Ex-0."
     }

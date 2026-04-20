@@ -25,30 +25,57 @@ class FakeEx0Schema(BaseModel):
 
 
 class FakeEx1Schema(BaseModel):
+    """Mirror real ``contracts.schemas.Ex1CandidateFact`` shape (stage-2.7
+    P1 follow-up — fixtures were regenerated with all real contracts
+    fields). The fake stays ``extra='forbid'`` like real contracts so it
+    catches accidental envelope leaks.
+    """
+
     SCHEMA_VERSION: ClassVar[str] = "v-ex1-fixture"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-1"] = "Ex-1"
     subsystem_id: str
-    produced_at: str
+    fact_id: str
+    entity_id: str
+    fact_type: str
+    fact_content: dict
+    confidence: float
+    source_reference: dict
+    extracted_at: str
 
 
 class FakeEx2Schema(BaseModel):
+    """Mirror real ``contracts.schemas.Ex2CandidateSignal`` shape."""
+
     SCHEMA_VERSION: ClassVar[str] = "v-ex2-fixture"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-2"] = "Ex-2"
     subsystem_id: str
-    produced_at: str
+    signal_id: str
+    signal_type: str
+    direction: str
+    magnitude: float
+    affected_entities: list[str]
+    affected_sectors: list[str]
+    time_horizon: str
+    evidence: list[str]
+    confidence: float
 
 
 class FakeEx3Schema(BaseModel):
+    """Mirror real ``contracts.schemas.Ex3CandidateGraphDelta`` shape."""
+
     SCHEMA_VERSION: ClassVar[str] = "v-ex3-fixture"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-3"] = "Ex-3"
     subsystem_id: str
-    produced_at: str
+    delta_id: str
+    delta_type: str
+    source_node: str
+    target_node: str
+    relation_type: str
+    properties: dict
+    evidence: list[str]
 
 
 def _install_fake_contracts(monkeypatch: pytest.MonkeyPatch) -> None:

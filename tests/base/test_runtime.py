@@ -116,7 +116,8 @@ def test_public_submit_and_heartbeat_use_configured_context_runtime() -> None:
     assert heartbeat_payload["semantic"] == EX0_SEMANTIC
     assert heartbeat_payload["subsystem_id"] == "subsystem-demo"
     assert heartbeat_payload["version"] == "0.1.0"
-    assert heartbeat_payload["status"] == "healthy"
+    # SDK "healthy" -> contracts wire "ok" (codex stage-2.7 P1 fix).
+    assert heartbeat_payload["status"] == "ok"
     assert heartbeat_payload["pending_count"] == 2
 
 

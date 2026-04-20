@@ -12,9 +12,10 @@
         "version": "0.1.0",
         "heartbeat_at": "2026-04-17T00:00:00Z",
         "status": "ok",
+        "last_output_at": null,
         "pending_count": 0
       },
-      "notes": "Valid Ex-0 payload with the fixed metadata_or_heartbeat semantic."
+      "notes": "Valid Ex-0 payload with the fixed metadata_or_heartbeat semantic. last_output_at is required by contracts.schemas.Ex0Metadata (AwareDatetime | None, no default); use null when the producer hasn't emitted output yet."
     },
     {
       "name": "heartbeat-degraded",

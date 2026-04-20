@@ -14,15 +14,31 @@ from subsystem_sdk.validate import EX0_SEMANTIC, validate_payload
 
 
 class Ex0HeartbeatPayload(BaseModel):
+    """Fake contracts schema for unit-tier validate_payload tests.
+
+    Mirrors ``contracts.schemas.Ex0Metadata`` (real published shape):
+    - ``extra='forbid'`` — same strictness as the real schema
+    - ``status`` uses the contracts wire enum {ok, degraded, failed}
+      (NOT the SDK-side {healthy, degraded, unhealthy} HeartbeatState)
+    - No ``ex_type`` / ``semantic`` envelope fields — those are stripped
+      by ``validate_payload._strip_sdk_envelope`` before model_validate
+      (codex stage-2.7 P1 fix). If this fake regrows envelope fields,
+      it stops mirroring real contracts and starts hiding bugs.
+
+    Real-contracts integration is in
+    ``tests/contract/test_contracts_alignment.py`` and
+    ``tests/fixtures/test_contract_roundtrip_real.py``.
+    """
+
     SCHEMA_VERSION: ClassVar[str] = "v-ex0-heartbeat"
     model_config = ConfigDict(extra="forbid")
 
-    ex_type: Literal["Ex-0"] = "Ex-0"
-    semantic: Literal["metadata_or_heartbeat"]
     subsystem_id: str
     version: str
     heartbeat_at: datetime
-    status: Literal["healthy", "degraded", "unhealthy"]
+    # Contracts wire enum — kept in sync with
+    # ``contracts.core.types.HeartbeatStatus`` ({ok, degraded, failed}).
+    status: Literal["ok", "degraded", "failed"]
     last_output_at: datetime | None = None
     pending_count: int
 
@@ -48,13 +64,17 @@ def test_build_ex0_payload_uses_fixed_ex0_semantic() -> None:
         heartbeat_at=heartbeat_at,
     )
 
+    # Wire payload: status mapped to contracts' HeartbeatStatus enum
+    # ({ok,degraded,failed}) — codex stage-2.7 P1 fix. SDK envelope
+    # fields (ex_type, semantic) stay in the SDK-side dict for routing
+    # but are stripped by validate_payload before contracts model_validate.
     assert payload == {
         "ex_type": "Ex-0",
         "semantic": EX0_SEMANTIC,
         "subsystem_id": "subsystem-demo",
         "version": "0.1.0",
         "heartbeat_at": "2026-04-17T12:30:15Z",
-        "status": "healthy",
+        "status": "ok",  # SDK "healthy" -> contracts "ok" wire enum
         "last_output_at": "2026-04-17T12:29:10Z",
         "pending_count": 4,
     }

@@ -1,25 +1,39 @@
 {
   "bundle_name": "ex1/default",
   "ex_type": "Ex-1",
-  "notes": "Default Ex-1 producer examples for SDK contract roundtrip tests.",
+  "notes": "Default Ex-1 producer examples for SDK contract roundtrip tests. Stage-2.7 P1 follow-up: regenerated to satisfy contracts.schemas.Ex1CandidateFact (FactId/EntityId/fact_type/fact_content/Confidence/source_reference/AwareDatetime). produced_at + ex_type are SDK envelope fields stripped before contracts.model_validate.",
   "valid_examples": [
     {
       "name": "producer-minimal-a",
       "payload": {
         "ex_type": "Ex-1",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "fact_id": "fact-placeholder-a",
+        "entity_id": "ENT_STOCK_PLACEHOLDER",
+        "fact_type": "earnings_release",
+        "fact_content": {"placeholder_field": "placeholder-value"},
+        "confidence": 0.9,
+        "source_reference": {"source": "placeholder-source"},
+        "extracted_at": "2026-04-17T00:00:00Z"
       },
-      "notes": "Valid Ex-1 producer payload using placeholder subsystem data."
+      "notes": "Minimal valid Ex-1 candidate fact payload covering every required contracts.schemas.Ex1CandidateFact field."
     },
     {
       "name": "producer-minimal-b",
       "payload": {
         "ex_type": "Ex-1",
         "subsystem_id": "subsystem-placeholder-alt",
-        "produced_at": "2026-04-17T00:01:00Z"
+        "produced_at": "2026-04-17T00:01:00Z",
+        "fact_id": "fact-placeholder-b",
+        "entity_id": "ENT_STOCK_PLACEHOLDER_B",
+        "fact_type": "guidance_revision",
+        "fact_content": {"alt_placeholder_field": "alt-placeholder-value"},
+        "confidence": 0.75,
+        "source_reference": {"source": "placeholder-source-alt"},
+        "extracted_at": "2026-04-17T00:01:00Z"
       },
-      "notes": "Valid Ex-1 producer payload with a second placeholder timestamp."
+      "notes": "Second valid Ex-1 candidate fact payload with alternate placeholder data."
     }
   ],
   "invalid_examples": [
@@ -29,6 +43,13 @@
         "ex_type": "Ex-1",
         "subsystem_id": "subsystem-placeholder",
         "produced_at": "2026-04-17T00:00:00Z",
+        "fact_id": "fact-placeholder-a",
+        "entity_id": "ENT_STOCK_PLACEHOLDER",
+        "fact_type": "earnings_release",
+        "fact_content": {"placeholder_field": "placeholder-value"},
+        "confidence": 0.9,
+        "source_reference": {"source": "placeholder-source"},
+        "extracted_at": "2026-04-17T00:00:00Z",
         "submitted_at": "2026-04-17T00:00:01Z"
       },
       "notes": "Ingest metadata guard: submitted_at is owned by ingest and must not appear in producer payloads."
@@ -37,16 +58,30 @@
       "name": "missing-produced-at",
       "payload": {
         "ex_type": "Ex-1",
-        "subsystem_id": "subsystem-placeholder"
+        "subsystem_id": "subsystem-placeholder",
+        "fact_id": "fact-placeholder-a",
+        "entity_id": "ENT_STOCK_PLACEHOLDER",
+        "fact_type": "earnings_release",
+        "fact_content": {"placeholder_field": "placeholder-value"},
+        "confidence": 0.9,
+        "source_reference": {"source": "placeholder-source"},
+        "extracted_at": "2026-04-17T00:00:00Z"
       },
-      "notes": "Producer-owned required field guard: Ex-1 requires produced_at."
+      "notes": "Producer-owned required field guard: SDK Ex-1 requires produced_at for routing even though it's stripped before contracts.model_validate."
     },
     {
       "name": "unknown-ex-type",
       "payload": {
         "ex_type": "Ex-9",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "fact_id": "fact-placeholder-a",
+        "entity_id": "ENT_STOCK_PLACEHOLDER",
+        "fact_type": "earnings_release",
+        "fact_content": {"placeholder_field": "placeholder-value"},
+        "confidence": 0.9,
+        "source_reference": {"source": "placeholder-source"},
+        "extracted_at": "2026-04-17T00:00:00Z"
       },
       "notes": "Unknown Ex type guard: Ex-9 is not a supported producer payload type."
     },
@@ -54,7 +89,14 @@
       "name": "missing-ex-type",
       "payload": {
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "fact_id": "fact-placeholder-a",
+        "entity_id": "ENT_STOCK_PLACEHOLDER",
+        "fact_type": "earnings_release",
+        "fact_content": {"placeholder_field": "placeholder-value"},
+        "confidence": 0.9,
+        "source_reference": {"source": "placeholder-source"},
+        "extracted_at": "2026-04-17T00:00:00Z"
       },
       "notes": "Producer-owned required field guard: produced payloads must declare ex_type."
     },
@@ -63,7 +105,14 @@
       "payload": {
         "ex_type": "Ex-0",
         "subsystem_id": "subsystem-placeholder",
-        "produced_at": "2026-04-17T00:00:00Z"
+        "produced_at": "2026-04-17T00:00:00Z",
+        "fact_id": "fact-placeholder-a",
+        "entity_id": "ENT_STOCK_PLACEHOLDER",
+        "fact_type": "earnings_release",
+        "fact_content": {"placeholder_field": "placeholder-value"},
+        "confidence": 0.9,
+        "source_reference": {"source": "placeholder-source"},
+        "extracted_at": "2026-04-17T00:00:00Z"
       },
       "notes": "Ex type mismatch guard: produced_at payloads must not be declared as Ex-0."
     }
