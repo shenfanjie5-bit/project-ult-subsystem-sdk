@@ -66,10 +66,15 @@ _COMPATIBLE_CONTRACT_RANGE: Final[str] = ">=0.1.3,<0.2.0"
 def _probe_contracts_schema_gateway() -> dict[str, Any]:
     """Lightly check that ``subsystem_sdk._contracts`` can resolve Ex-0..3.
 
-    Treats a missing ``contracts`` install as ``degraded`` rather than
-    ``down`` — assembly's compat check still passes (it only requires the
-    method to return a dict), and offline-first dev venvs (no
-    contracts-schemas extra installed) keep working.
+    Codex review #11 P2 fix: tag the failure ``kind`` so the caller can
+    distinguish (a) external ``contracts`` package not installed
+    (offline-first — degraded) from (b) ``subsystem_sdk._contracts``
+    itself broken or schema lookup raising (real SDK regression —
+    blocked). Previously all ``available=False`` paths were uniformly
+    treated as ``degraded`` by the caller, masking sdk-side regressions.
+
+    Returns ``kind`` ∈ ``{sdk_internal_broken, contracts_missing,
+    schema_lookup_failed}`` whenever ``available`` is False.
     """
 
     try:
@@ -81,6 +86,7 @@ def _probe_contracts_schema_gateway() -> dict[str, Any]:
     except Exception as exc:  # pragma: no cover - defensive
         return {
             "available": False,
+            "kind": "sdk_internal_broken",
             "reason": f"could not import subsystem_sdk._contracts: {exc!r}",
         }
 
@@ -89,11 +95,13 @@ def _probe_contracts_schema_gateway() -> dict[str, Any]:
     except ContractsUnavailableError as exc:
         return {
             "available": False,
+            "kind": "contracts_missing",
             "reason": f"contracts package not installed: {exc}",
         }
     except Exception as exc:  # pragma: no cover - defensive
         return {
             "available": False,
+            "kind": "schema_lookup_failed",
             "reason": f"contracts schema lookup failed: {exc!r}",
         }
 
@@ -152,19 +160,41 @@ class _HealthProbe:
                 details=details,
             )
 
-        # Invariant 2: contracts schema gateway. degraded (not blocked)
-        # when contracts is missing — offline-first dev venvs are allowed.
+        # Invariant 2: contracts schema gateway. Codex review #11 P2 fix:
+        # branch on ``kind`` instead of treating every ``available=False``
+        # uniformly as ``degraded``. Only ``contracts_missing`` (external
+        # contracts package not installed in this venv) is offline-first
+        # benign; ``sdk_internal_broken`` and ``schema_lookup_failed``
+        # are real SDK-side regressions (the gateway module itself can't
+        # import, or it raises during schema resolution) and must surface
+        # as ``blocked`` so assembly's gate doesn't silently let them
+        # through as degraded.
         gateway = _probe_contracts_schema_gateway()
         details["contracts_schema_gateway"] = gateway
         if gateway["available"]:
             status = _HEALTHY
             message = "subsystem-sdk invariants verified (contracts gateway available)"
         else:
-            status = _DEGRADED
-            message = (
-                "subsystem-sdk running offline-first — contracts gateway "
-                "unavailable in this venv"
-            )
+            kind = gateway.get("kind")
+            if kind == "contracts_missing":
+                status = _DEGRADED
+                message = (
+                    "subsystem-sdk running offline-first — external "
+                    "contracts package not installed in this venv"
+                )
+            else:
+                # sdk_internal_broken / schema_lookup_failed / unknown —
+                # SDK-side regression, not environmental.
+                return self._build_result(
+                    started_at,
+                    status=_DOWN,
+                    message=(
+                        f"subsystem-sdk contracts schema gateway broken "
+                        f"(kind={kind!r}); not an offline-first state — "
+                        "SDK-side regression"
+                    ),
+                    details=details,
+                )
 
         # Invariant 3: SDK declares the canonical 4 Ex types and 3 backend kinds.
         details["supported_ex_types"] = sorted(PRODUCER_OWNED_REQUIRED.keys())
