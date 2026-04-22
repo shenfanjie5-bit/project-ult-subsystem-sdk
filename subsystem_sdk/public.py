@@ -45,7 +45,22 @@ from subsystem_sdk.validate.semantics import (
 
 _HEALTHY: Final[str] = "healthy"
 _DEGRADED: Final[str] = "degraded"
-_DOWN: Final[str] = "down"
+_DOWN: Final[str] = "blocked"
+
+# Stage 4 §4.1.5: contract_version is the canonical contracts schema version
+# this module is bound against (NOT this module's own package version, which
+# stays in module_version). Harmonized to v0.1.3 across all 11 active
+# subsystem modules so assembly's ContractsVersionCheck (strict equality vs
+# matrix.contract_version) succeeds at the cross-project compat audit
+# (assembly/scripts/stage_3_compat_audit.py + Stage 4 §4.1 registry).
+# Previously this was derived dynamically via subsystem_sdk._contracts
+# .get_schema_version, which returns "unknown" today because the contracts
+# Ex models don't expose a `schema_version` class attribute — assembly's
+# VersionInfo regex `^v\d+\.\d+\.\d+$` rejects "unknown", breaking the
+# contract suite. Per Stage 4 §4.1.5 we hardcode the canonical value
+# matching the contracts package version this SDK is pinned against.
+_CONTRACT_VERSION: Final[str] = "v0.1.3"
+_COMPATIBLE_CONTRACT_RANGE: Final[str] = ">=0.1.3,<0.2.0"
 
 
 def _probe_contracts_schema_gateway() -> dict[str, Any]:
@@ -95,8 +110,17 @@ class _HealthProbe:
     ``healthy`` / ``degraded`` / ``down``.
     """
 
+    _PROBE_NAME: Final[str] = "subsystem_sdk.health"
+
     def check(self, *, timeout_sec: float) -> dict[str, Any]:
-        details: dict[str, Any] = {}
+        # Stage 4 §4.3 Lite-stack e2e fix: assembly's
+        # ``HealthResult.model_validate`` requires ``module_id`` /
+        # ``probe_name`` / ``latency_ms`` / ``message`` plus a status
+        # enum value in {healthy, degraded, blocked} (NOT ``"down"``).
+        from time import perf_counter
+
+        started_at = perf_counter()
+        details: dict[str, Any] = {"timeout_sec": timeout_sec}
 
         # Invariant 1: INGEST_METADATA_FIELDS is non-empty + the rejector
         # actually rejects them.
@@ -107,36 +131,71 @@ class _HealthProbe:
             except IngestMetadataLeakError:
                 details["ingest_metadata_guard"] = "ok"
             else:
-                return {
-                    "status": _DOWN,
-                    "details": {
-                        **details,
-                        "ingest_metadata_guard": (
-                            "FAIL — assert_no_ingest_metadata accepted "
-                            "submitted_at"
-                        ),
-                    },
-                    "timeout_sec": timeout_sec,
-                }
+                details["ingest_metadata_guard"] = (
+                    "FAIL — assert_no_ingest_metadata accepted submitted_at"
+                )
+                return self._build_result(
+                    started_at,
+                    status=_DOWN,
+                    message=(
+                        "subsystem-sdk INGEST_METADATA_FIELDS guard accepted "
+                        "ingest metadata key — invariant broken"
+                    ),
+                    details=details,
+                )
         except Exception as exc:  # pragma: no cover - defensive
-            return {
-                "status": _DOWN,
-                "details": {**details, "ingest_metadata_guard": f"FAIL: {exc!r}"},
-                "timeout_sec": timeout_sec,
-            }
+            details["ingest_metadata_guard"] = f"FAIL: {exc!r}"
+            return self._build_result(
+                started_at,
+                status=_DOWN,
+                message=f"subsystem-sdk health probe raised: {exc!r}",
+                details=details,
+            )
 
-        # Invariant 2: contracts schema gateway. degraded (not down) when
-        # contracts is missing — offline-first dev venvs are allowed.
+        # Invariant 2: contracts schema gateway. degraded (not blocked)
+        # when contracts is missing — offline-first dev venvs are allowed.
         gateway = _probe_contracts_schema_gateway()
         details["contracts_schema_gateway"] = gateway
-        status = _HEALTHY if gateway["available"] else _DEGRADED
+        if gateway["available"]:
+            status = _HEALTHY
+            message = "subsystem-sdk invariants verified (contracts gateway available)"
+        else:
+            status = _DEGRADED
+            message = (
+                "subsystem-sdk running offline-first — contracts gateway "
+                "unavailable in this venv"
+            )
 
         # Invariant 3: SDK declares the canonical 4 Ex types and 3 backend kinds.
         details["supported_ex_types"] = sorted(PRODUCER_OWNED_REQUIRED.keys())
         details["backend_kinds"] = list(BACKEND_KINDS)
         details["ex0_semantic"] = EX0_SEMANTIC
 
-        return {"status": status, "details": details, "timeout_sec": timeout_sec}
+        return self._build_result(
+            started_at,
+            status=status,
+            message=message,
+            details=details,
+        )
+
+    def _build_result(
+        self,
+        started_at: float,
+        *,
+        status: str,
+        message: str,
+        details: dict[str, Any],
+    ) -> dict[str, Any]:
+        from time import perf_counter
+
+        return {
+            "module_id": "subsystem-sdk",
+            "probe_name": self._PROBE_NAME,
+            "status": status,
+            "latency_ms": max(0.0, (perf_counter() - started_at) * 1000.0),
+            "message": message,
+            "details": details,
+        }
 
 
 class _SmokeHook:
@@ -338,29 +397,15 @@ class _VersionDeclaration:
     """
 
     def declare(self) -> dict[str, Any]:
-        contract_version = self._derive_contract_version()
         return {
             "module_id": "subsystem-sdk",
             "module_version": _SUBSYSTEM_SDK_VERSION,
-            "contract_version": contract_version,
+            "contract_version": _CONTRACT_VERSION,
+            "compatible_contract_range": _COMPATIBLE_CONTRACT_RANGE,
             "supported_ex_types": sorted(PRODUCER_OWNED_REQUIRED.keys()),
             "backend_kinds": list(BACKEND_KINDS),
             "ex0_semantic": EX0_SEMANTIC,
         }
-
-    @staticmethod
-    def _derive_contract_version() -> str:
-        try:
-            from subsystem_sdk._contracts import (
-                ContractsUnavailableError,
-                get_ex_schema,
-                get_schema_version,
-            )
-
-            schema = get_ex_schema("Ex-0")
-            return get_schema_version(schema)
-        except Exception:
-            return "unknown"
 
 
 class _Cli:
