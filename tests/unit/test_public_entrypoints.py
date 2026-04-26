@@ -115,18 +115,34 @@ class TestEntrypointBehaviour:
     def test_health_probe_returns_status_dict(self) -> None:
         result = public.health_probe.check(timeout_sec=1.0)
         assert isinstance(result, dict)
-        assert result["status"] in {"healthy", "degraded", "down"}
-        assert result["timeout_sec"] == 1.0
+        assert result["status"] in {"healthy", "degraded", "blocked"}
         assert "details" in result
+        assert result["details"]["timeout_sec"] == 1.0
 
     def test_smoke_hook_runs_against_supported_profiles(self) -> None:
         for profile_id in ("lite-local", "full-dev"):
             result = public.smoke_hook.run(profile_id=profile_id)
             assert result["passed"], result.get("failure_reason")
-            assert result["profile_id"] == profile_id
+            assert set(result) == {
+                "module_id",
+                "hook_name",
+                "passed",
+                "duration_ms",
+                "failure_reason",
+            }
+            assert result["module_id"] == "subsystem-sdk"
+            assert result["hook_name"] == "subsystem_sdk.smoke"
+            assert result["failure_reason"] is None
 
     def test_smoke_hook_rejects_unknown_profile(self) -> None:
         result = public.smoke_hook.run(profile_id="nonsense-profile")
+        assert set(result) == {
+            "module_id",
+            "hook_name",
+            "passed",
+            "duration_ms",
+            "failure_reason",
+        }
         assert result["passed"] is False
         assert "unknown profile_id" in result["failure_reason"]
 
@@ -143,6 +159,25 @@ class TestEntrypointBehaviour:
         # Must list 3 backend kinds (lite_pg, full_kafka, mock).
         assert set(result["backend_kinds"]) == {"lite_pg", "full_kafka", "mock"}
         assert result["ex0_semantic"] == "metadata_or_heartbeat"
+
+    def test_public_entrypoints_validate_against_assembly_models(self) -> None:
+        assembly_models = pytest.importorskip("assembly.contracts.models")
+
+        assembly_models.HealthResult.model_validate(
+            public.health_probe.check(timeout_sec=1.0)
+        )
+        assembly_models.SmokeResult.model_validate(
+            public.smoke_hook.run(profile_id="lite-local")
+        )
+        assembly_models.SmokeResult.model_validate(
+            public.smoke_hook.run(profile_id="full-dev")
+        )
+        assembly_models.SmokeResult.model_validate(
+            public.smoke_hook.run(profile_id="nonsense-profile")
+        )
+        assembly_models.VersionInfo.model_validate(
+            public.version_declaration.declare()
+        )
 
     def test_cli_version_returns_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc = public.cli.invoke(["version"])

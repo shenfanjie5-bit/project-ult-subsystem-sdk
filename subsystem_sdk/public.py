@@ -239,17 +239,30 @@ class _SmokeHook:
     _SUPPORTED_PROFILES: Final[frozenset[str]] = frozenset(
         {"lite-local", "full-dev"}
     )
+    _HOOK_NAME: Final[str] = "subsystem_sdk.smoke"
 
     def run(self, *, profile_id: str) -> dict[str, Any]:
-        if profile_id not in self._SUPPORTED_PROFILES:
+        from time import perf_counter
+
+        started_at = perf_counter()
+
+        def build_result(*, passed: bool, failure_reason: str | None) -> dict[str, Any]:
             return {
-                "passed": False,
-                "failure_reason": (
+                "module_id": "subsystem-sdk",
+                "hook_name": self._HOOK_NAME,
+                "passed": passed,
+                "duration_ms": max(0.0, (perf_counter() - started_at) * 1000.0),
+                "failure_reason": failure_reason,
+            }
+
+        if profile_id not in self._SUPPORTED_PROFILES:
+            return build_result(
+                passed=False,
+                failure_reason=(
                     f"unknown profile_id={profile_id!r}; supported: "
                     f"{sorted(self._SUPPORTED_PROFILES)}"
                 ),
-                "profile_id": profile_id,
-            }
+            )
 
         from datetime import UTC, datetime
 
@@ -289,13 +302,12 @@ class _SmokeHook:
         try:
             assert_producer_only(ex0_payload)
         except Exception as exc:
-            return {
-                "passed": False,
-                "failure_reason": (
+            return build_result(
+                passed=False,
+                failure_reason=(
                     f"assert_producer_only failed on clean Ex-0 payload: {exc!r}"
                 ),
-                "profile_id": profile_id,
-            }
+            )
 
         # 3. validate_payload — REAL contracts model_validate (envelope
         #    stripped inside the engine before model_validate is called).
@@ -303,21 +315,15 @@ class _SmokeHook:
         #    broken; smoke MUST surface this, not paper over it.
         validation = validate_payload(ex0_payload)
         if not validation.is_valid:
-            return {
-                "passed": False,
-                "failure_reason": (
+            return build_result(
+                passed=False,
+                failure_reason=(
                     "validate_payload rejected SDK-built Ex-0 wire payload; "
                     "this is a real cross-repo SDK<->contracts incompatibility, "
                     "NOT a smoke setup issue. Field errors: "
                     f"{list(validation.field_errors)}"
                 ),
-                "profile_id": profile_id,
-                "details": {
-                    "validation_ex_type": validation.ex_type,
-                    "validation_schema_version": validation.schema_version,
-                    "wire_payload_keys": sorted(ex0_payload.keys()),
-                },
-            }
+            )
 
         # 4. HeartbeatClient.send_heartbeat through a MockSubmitBackend —
         #    end-to-end the producer-facing path including receipt
@@ -328,38 +334,34 @@ class _SmokeHook:
         try:
             receipt = client.send_heartbeat(ex0_payload)
         except Exception as exc:
-            return {
-                "passed": False,
-                "failure_reason": f"send_heartbeat raised: {exc!r}",
-                "profile_id": profile_id,
-            }
+            return build_result(
+                passed=False,
+                failure_reason=f"send_heartbeat raised: {exc!r}",
+            )
         if not receipt.accepted:
-            return {
-                "passed": False,
-                "failure_reason": (
+            return build_result(
+                passed=False,
+                failure_reason=(
                     f"send_heartbeat receipt not accepted: errors={list(receipt.errors)}"
                 ),
-                "profile_id": profile_id,
-            }
+            )
 
         # 5. Receipt-shape sanity: RESERVED_PRIVATE_KEYS must be non-empty
         #    and disjoint from INGEST_METADATA_FIELDS (different boundary
         #    layers — backend-private leak vs producer-side ingest leak).
         if not RESERVED_PRIVATE_KEYS:
-            return {
-                "passed": False,
-                "failure_reason": "RESERVED_PRIVATE_KEYS empty",
-                "profile_id": profile_id,
-            }
+            return build_result(
+                passed=False,
+                failure_reason="RESERVED_PRIVATE_KEYS empty",
+            )
         if RESERVED_PRIVATE_KEYS & INGEST_METADATA_FIELDS:
-            return {
-                "passed": False,
-                "failure_reason": (
+            return build_result(
+                passed=False,
+                failure_reason=(
                     "RESERVED_PRIVATE_KEYS overlaps INGEST_METADATA_FIELDS; "
                     "two distinct boundary layers must stay disjoint"
                 ),
-                "profile_id": profile_id,
-            }
+            )
 
         # 6. Negative-path guard exercise — assert_no_ingest_metadata MUST
         #    raise on each of the forbidden fields. Anchors the iron rule
@@ -370,32 +372,16 @@ class _SmokeHook:
                 assert_no_ingest_metadata(polluted)
             except IngestMetadataLeakError:
                 continue
-            return {
-                "passed": False,
-                "failure_reason": (
+            return build_result(
+                passed=False,
+                failure_reason=(
                     f"ingest-metadata guard let {forbidden_field!r} through; "
                     "iron rule violation (CLAUDE.md: producer payload must "
                     "never contain ingest metadata)"
                 ),
-                "profile_id": profile_id,
-            }
+            )
 
-        return {
-            "passed": True,
-            "profile_id": profile_id,
-            "details": {
-                "validation_ex_type": validation.ex_type,
-                "validation_schema_version": validation.schema_version,
-                "receipt_id": receipt.receipt_id,
-                "receipt_backend_kind": receipt.backend_kind,
-                "receipt_validator_version": receipt.validator_version,
-                "wire_payload_status": ex0_payload["status"],
-                "ex0_payload_fields": sorted(ex0_payload.keys()),
-                "ingest_metadata_fields_checked": ["submitted_at", "ingest_seq"],
-                "reserved_private_keys_count": len(RESERVED_PRIVATE_KEYS),
-                "ex0_semantic": EX0_SEMANTIC,
-            },
-        }
+        return build_result(passed=True, failure_reason=None)
 
 
 class _InitHook:
