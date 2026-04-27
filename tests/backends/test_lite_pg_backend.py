@@ -21,6 +21,25 @@ class Ex1CandidatePayload(BaseModel):
     entity_id: str
 
 
+class Ex2CandidatePayload(BaseModel):
+    SCHEMA_VERSION: ClassVar[str] = "v-ex2-lite-pg"
+    model_config = ConfigDict(extra="forbid")
+
+    ex_type: Literal["Ex-2"] = "Ex-2"
+    subsystem_id: str
+    affected_entities: list[str]
+
+
+class Ex3CandidatePayload(BaseModel):
+    SCHEMA_VERSION: ClassVar[str] = "v-ex3-lite-pg"
+    model_config = ConfigDict(extra="forbid")
+
+    ex_type: Literal["Ex-3"] = "Ex-3"
+    subsystem_id: str
+    source_node: str
+    target_node: str
+
+
 class FakeCursor:
     def __init__(self, row: Any = (42,)) -> None:
         self.row = row
@@ -63,9 +82,24 @@ class BlockingLookup:
         return {ref: False for ref in refs_tuple}
 
 
+class SelectiveLookup:
+    def __init__(self, known_refs: Iterable[str] = ()) -> None:
+        self.known_refs = set(known_refs)
+        self.calls: list[tuple[str, ...]] = []
+
+    def lookup(self, refs: Iterable[str]) -> Mapping[str, bool]:
+        refs_tuple = tuple(refs)
+        self.calls.append(refs_tuple)
+        return {ref: ref in self.known_refs for ref in refs_tuple}
+
+
 def _install_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
     module = types.ModuleType("contracts")
-    module.EX_PAYLOAD_SCHEMAS = {"Ex-1": Ex1CandidatePayload}
+    module.EX_PAYLOAD_SCHEMAS = {
+        "Ex-1": Ex1CandidatePayload,
+        "Ex-2": Ex2CandidatePayload,
+        "Ex-3": Ex3CandidatePayload,
+    }
     monkeypatch.setitem(sys.modules, "contracts", module)
     monkeypatch.setattr(registry, "_DEFAULT_REGISTRY", registry.ValidatorRegistry())
 
@@ -180,6 +214,69 @@ def test_pg_submit_client_block_preflight_does_not_enqueue(
         "entity preflight blocked unresolved reference(s): missing-entity",
     )
     assert factory_calls == []
+    assert cursor.execute_calls == []
+    assert connection.commits == 0
+    assert connection.closed is False
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_lookup", "validator_version", "blocked_ref"),
+    [
+        (
+            {
+                "ex_type": "Ex-2",
+                "subsystem_id": "subsystem-a",
+                "produced_at": "2026-04-27T00:00:00Z",
+                "affected_entities": ["missing-ex2-entity"],
+            },
+            ("missing-ex2-entity",),
+            "v-ex2-lite-pg",
+            "missing-ex2-entity",
+        ),
+        (
+            {
+                "ex_type": "Ex-3",
+                "subsystem_id": "subsystem-a",
+                "produced_at": "2026-04-27T00:00:00Z",
+                "source_node": "known-source",
+                "target_node": "missing-ex3-target",
+            },
+            ("known-source", "missing-ex3-target"),
+            "v-ex3-lite-pg",
+            "missing-ex3-target",
+        ),
+    ],
+)
+def test_pg_submit_client_block_preflight_does_not_enqueue_ex2_or_ex3(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, Any],
+    expected_lookup: tuple[str, ...],
+    validator_version: str,
+    blocked_ref: str,
+) -> None:
+    _install_contracts(monkeypatch)
+    cursor = FakeCursor(row={"pg_queue_id": "queue-42"})
+    connection = FakeConnection(cursor)
+
+    backend = PgSubmitBackend(
+        SubmitBackendConfig(backend_kind="lite_pg"),
+        connection_factory=lambda received: connection,
+    )
+    lookup = SelectiveLookup(known_refs={"known-source"})
+
+    receipt = SubmitClient(
+        backend,
+        entity_lookup=lookup,
+        preflight_policy="block",
+    ).submit(payload)
+
+    assert lookup.calls == [expected_lookup]
+    assert receipt.accepted is False
+    assert receipt.backend_kind == "lite_pg"
+    assert receipt.validator_version == validator_version
+    assert receipt.errors == (
+        f"entity preflight blocked unresolved reference(s): {blocked_ref}",
+    )
     assert cursor.execute_calls == []
     assert connection.commits == 0
     assert connection.closed is False

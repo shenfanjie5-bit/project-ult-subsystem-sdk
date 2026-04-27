@@ -180,6 +180,22 @@ def test_run_entity_preflight_without_lookup_degrades_to_skip() -> None:
     assert any("no lookup channel" in warning for warning in result.warnings)
 
 
+def test_block_preflight_without_live_lookup_documents_missing_registry_boundary() -> None:
+    payload = _produced_payload("Ex-2") | {
+        "affected_entities": ["missing-live-entity"],
+    }
+
+    result = run_entity_preflight(payload, lookup=None, policy="block")
+
+    assert result.checked is False
+    assert result.policy == "skip"
+    assert result.unresolved_refs == ()
+    assert result.should_block is False
+    assert result.warnings == (
+        "entity preflight skipped: no lookup channel provided",
+    )
+
+
 def test_run_entity_preflight_lookup_exception_degrades_to_skip() -> None:
     payload = _produced_payload() | {"entity_ref": "missing-entity"}
 
