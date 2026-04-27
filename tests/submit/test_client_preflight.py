@@ -48,6 +48,7 @@ class Ex2Payload(BaseModel):
 
     ex_type: Literal["Ex-2"] = "Ex-2"
     subsystem_id: str
+    affected_entities: list[str] = []
 
 
 class Ex3Payload(BaseModel):
@@ -56,6 +57,8 @@ class Ex3Payload(BaseModel):
 
     ex_type: Literal["Ex-3"] = "Ex-3"
     subsystem_id: str
+    source_node: str | None = None
+    target_node: str | None = None
 
 
 class RecordingLookup:
@@ -160,6 +163,53 @@ def test_submit_client_block_preflight_rejects_without_backend_call() -> None:
     )
     assert receipt.backend_kind == "mock"
     assert receipt.validator_version == "v-ex1-submit"
+
+
+def test_submit_client_block_preflight_rejects_unresolved_ex2_entities_without_backend_call() -> None:
+    backend = RecordingBackend()
+    payload = {
+        "ex_type": "Ex-2",
+        "subsystem_id": "subsystem-submit",
+        "produced_at": "2026-04-18T00:00:00Z",
+        "affected_entities": ["missing-entity"],
+    }
+
+    receipt = SubmitClient(
+        backend,
+        entity_lookup=RecordingLookup(),
+        preflight_policy="block",
+    ).submit(payload)
+
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.errors == (
+        "entity preflight blocked unresolved reference(s): missing-entity",
+    )
+    assert receipt.validator_version == "v-ex2-submit"
+
+
+def test_submit_client_block_preflight_rejects_unresolved_ex3_endpoint_nodes_without_backend_call() -> None:
+    backend = RecordingBackend()
+    payload = {
+        "ex_type": "Ex-3",
+        "subsystem_id": "subsystem-submit",
+        "produced_at": "2026-04-18T00:00:00Z",
+        "source_node": "known-source",
+        "target_node": "missing-target",
+    }
+
+    receipt = SubmitClient(
+        backend,
+        entity_lookup=RecordingLookup(resolved_refs={"known-source"}),
+        preflight_policy="block",
+    ).submit(payload)
+
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.errors == (
+        "entity preflight blocked unresolved reference(s): missing-target",
+    )
+    assert receipt.validator_version == "v-ex3-submit"
 
 
 def test_submit_client_backend_rejection_preserves_warning_merge_order() -> None:

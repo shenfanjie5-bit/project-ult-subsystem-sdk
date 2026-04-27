@@ -224,10 +224,15 @@ def test_run_entity_preflight_extracts_refs_in_first_seen_order_only() -> None:
             "entity-c",
             "entity-d",
             "entity-e",
+            "entity-f",
+            "entity-g",
+            "entity-h",
+            "entity-i",
         }
     )
     payload = _produced_payload("Ex-2") | {
         "canonical_entity_id": "entity-a",
+        "affected_entities": ["entity-f", "entity-g"],
         "title": "not-an-entity-ref",
         "items": [
             {"entity_ref": "entity-b"},
@@ -237,6 +242,8 @@ def test_run_entity_preflight_extracts_refs_in_first_seen_order_only() -> None:
         "relationship": {
             "source_entity_id": "entity-d",
             "target_entity_id": "entity-e",
+            "source_node": "entity-h",
+            "target_node": "entity-i",
             "body": "entity-should-also-not-be-scanned",
         },
     }
@@ -245,7 +252,52 @@ def test_run_entity_preflight_extracts_refs_in_first_seen_order_only() -> None:
 
     assert result.checked is True
     assert result.unresolved_refs == ()
-    assert lookup.calls == [("entity-a", "entity-b", "entity-c", "entity-d", "entity-e")]
+    assert lookup.calls == [
+        (
+            "entity-a",
+            "entity-f",
+            "entity-g",
+            "entity-b",
+            "entity-c",
+            "entity-d",
+            "entity-e",
+            "entity-h",
+            "entity-i",
+        )
+    ]
+
+
+def test_run_entity_preflight_blocks_ex2_affected_entities() -> None:
+    payload = _produced_payload("Ex-2") | {
+        "affected_entities": ["known-entity", "missing-entity"],
+    }
+
+    result = run_entity_preflight(
+        payload,
+        lookup=FakeLookup(known_refs={"known-entity"}),
+        policy="block",
+    )
+
+    assert result.checked is True
+    assert result.unresolved_refs == ("missing-entity",)
+    assert result.should_block is True
+
+
+def test_run_entity_preflight_blocks_ex3_endpoint_nodes() -> None:
+    payload = _produced_payload("Ex-3") | {
+        "source_node": "known-source",
+        "target_node": "missing-target",
+    }
+
+    result = run_entity_preflight(
+        payload,
+        lookup=FakeLookup(known_refs={"known-source"}),
+        policy="block",
+    )
+
+    assert result.checked is True
+    assert result.unresolved_refs == ("missing-target",)
+    assert result.should_block is True
 
 
 def test_run_entity_preflight_skips_ex0_without_lookup_or_entity_ref_scan() -> None:

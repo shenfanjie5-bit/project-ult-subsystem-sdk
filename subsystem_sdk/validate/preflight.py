@@ -18,11 +18,14 @@ _EX0_SCHEMA_MARKERS: Final[frozenset[str]] = frozenset(
 )
 _ENTITY_REF_FIELDS: Final[frozenset[str]] = frozenset(
     {
+        "affected_entities",
         "canonical_entity_id",
         "entity_id",
         "entity_ref",
         "entity_refs",
+        "source_node",
         "source_entity_id",
+        "target_node",
         "target_entity_id",
         "subject_entity_id",
         "object_entity_id",
