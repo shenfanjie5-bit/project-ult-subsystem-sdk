@@ -8,12 +8,17 @@ from typing import TYPE_CHECKING, Any
 from subsystem_sdk.submit._dispatch import validate_then_dispatch
 from subsystem_sdk.submit.protocol import SubmitBackendInterface
 from subsystem_sdk.submit.receipt import SubmitReceipt
+from subsystem_sdk.validate.entity_registry import (
+    EntityPreflightProfile,
+    build_entity_preflight_wiring,
+)
 from subsystem_sdk.validate.engine import (
     _apply_preflight,
     validate_payload,
 )
 from subsystem_sdk.validate.preflight import (
     EntityRegistryLookup,
+    LookupUnavailablePolicy,
     PreflightPolicy,
     run_entity_preflight,
     should_run_entity_preflight,
@@ -42,11 +47,20 @@ class SubmitClient:
         *,
         entity_lookup: EntityRegistryLookup | None = None,
         preflight_policy: PreflightPolicy = "skip",
+        entity_preflight_profile: EntityPreflightProfile = "dev",
     ) -> None:
+        preflight_wiring = build_entity_preflight_wiring(
+            profile=entity_preflight_profile,
+            entity_lookup=entity_lookup,
+            preflight_policy=preflight_policy,
+        )
         self._backend = backend
         self._validator = validator
-        self._entity_lookup = entity_lookup
-        self._preflight_policy = preflight_policy
+        self._entity_lookup = preflight_wiring.lookup
+        self._preflight_policy = preflight_wiring.preflight_policy
+        self._lookup_unavailable_policy: LookupUnavailablePolicy = (
+            preflight_wiring.lookup_unavailable_policy
+        )
 
     @property
     def backend(self) -> SubmitBackendInterface:
@@ -63,6 +77,7 @@ class SubmitClient:
         validator: Callable[[Mapping[str, Any]], ValidationResult] = validate_payload,
         entity_lookup: EntityRegistryLookup | None = None,
         preflight_policy: PreflightPolicy = "skip",
+        entity_preflight_profile: EntityPreflightProfile = "dev",
     ) -> "SubmitClient":
         """Build a submit client from backend config and a backend factory.
 
@@ -75,6 +90,7 @@ class SubmitClient:
             validator=validator,
             entity_lookup=entity_lookup,
             preflight_policy=preflight_policy,
+            entity_preflight_profile=entity_preflight_profile,
         )
 
     def submit(self, payload: Mapping[str, Any]) -> SubmitReceipt:
@@ -100,6 +116,7 @@ class SubmitClient:
                 payload,
                 lookup=self._entity_lookup,
                 policy=self._preflight_policy,
+                lookup_unavailable_policy=self._lookup_unavailable_policy,
             )
             return _apply_preflight(validation, preflight)
         return validation

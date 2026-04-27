@@ -8,8 +8,10 @@ from typing import Any, Final, Literal, Protocol, cast
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
 PreflightPolicy = Literal["warn", "block", "skip"]
+LookupUnavailablePolicy = Literal["skip", "fail"]
 
 _PREFLIGHT_POLICIES: Final[frozenset[str]] = frozenset({"warn", "block", "skip"})
+_LOOKUP_UNAVAILABLE_POLICIES: Final[frozenset[str]] = frozenset({"skip", "fail"})
 _EX_TYPE_FIELD: Final[str] = "ex_type"
 _EX0_TYPE: Final[str] = "Ex-0"
 PREFLIGHT_EX_TYPES: Final[frozenset[str]] = frozenset({"Ex-1", "Ex-2", "Ex-3"})
@@ -81,7 +83,9 @@ class EntityPreflightResult(BaseModel):
     def should_block(self) -> bool:
         """Whether the configured policy should block on unresolved refs."""
 
-        return self.policy == "block" and self.has_unresolved_refs
+        return self.policy == "block" and (
+            self.has_unresolved_refs or (not self.checked and bool(self.warnings))
+        )
 
     def to_validation_preflight(self) -> dict[str, Any]:
         """Return a JSON-safe representation for ValidationResult.preflight."""
@@ -193,15 +197,43 @@ def _coerce_policy(policy: PreflightPolicy) -> PreflightPolicy:
     return cast(PreflightPolicy, policy)
 
 
+def _coerce_lookup_unavailable_policy(
+    policy: LookupUnavailablePolicy,
+) -> LookupUnavailablePolicy:
+    if policy not in _LOOKUP_UNAVAILABLE_POLICIES:
+        raise ValueError(f"unsupported lookup unavailable policy: {policy!r}")
+    return cast(LookupUnavailablePolicy, policy)
+
+
+def _lookup_unavailable_result(
+    warning: str,
+    *,
+    policy: PreflightPolicy,
+    lookup_unavailable_policy: LookupUnavailablePolicy,
+) -> EntityPreflightResult:
+    if lookup_unavailable_policy == "skip":
+        return _skip_result(f"entity preflight skipped: {warning}")
+    return EntityPreflightResult(
+        checked=False,
+        unresolved_refs=(),
+        warnings=(f"entity preflight failed closed: {warning}",),
+        policy=policy,
+    )
+
+
 def run_entity_preflight(
     payload: Mapping[str, Any] | BaseModel,
     *,
     lookup: EntityRegistryLookup | None = None,
     policy: PreflightPolicy = "warn",
+    lookup_unavailable_policy: LookupUnavailablePolicy = "skip",
 ) -> EntityPreflightResult:
     """Run optional entity ref lookup before Ex-1/2/3 submission."""
 
     effective_policy = _coerce_policy(policy)
+    effective_lookup_unavailable_policy = _coerce_lookup_unavailable_policy(
+        lookup_unavailable_policy
+    )
     payload_mapping = _as_mapping(payload)
     if payload_mapping is None:
         return _skip_result(
@@ -219,7 +251,11 @@ def run_entity_preflight(
     if effective_policy == "skip":
         return _skip_result("entity preflight skipped by policy")
     if lookup is None:
-        return _skip_result("entity preflight skipped: no lookup channel provided")
+        return _lookup_unavailable_result(
+            "no lookup channel provided",
+            policy=effective_policy,
+            lookup_unavailable_policy=effective_lookup_unavailable_policy,
+        )
 
     refs = extract_entity_refs(payload_mapping)
     if not refs:
@@ -233,11 +269,17 @@ def run_entity_preflight(
     try:
         lookup_result = lookup.lookup(refs)
     except Exception as exc:  # pragma: no cover - exact registry failures vary.
-        return _skip_result(f"entity preflight skipped: lookup channel failed: {exc}")
+        return _lookup_unavailable_result(
+            f"lookup channel failed: {exc}",
+            policy=effective_policy,
+            lookup_unavailable_policy=effective_lookup_unavailable_policy,
+        )
 
     if not isinstance(lookup_result, Mapping):
-        return _skip_result(
-            "entity preflight skipped: lookup channel returned a non-mapping result"
+        return _lookup_unavailable_result(
+            "lookup channel returned a non-mapping result",
+            policy=effective_policy,
+            lookup_unavailable_policy=effective_lookup_unavailable_policy,
         )
 
     unresolved: list[str] = []

@@ -72,6 +72,11 @@ class RecordingLookup:
         return {ref: ref in self._resolved_refs for ref in refs_tuple}
 
 
+class RaisingLookup:
+    def lookup(self, refs: Iterable[str]) -> Mapping[str, bool]:
+        raise RuntimeError("live registry unavailable")
+
+
 class RecordingBackend:
     backend_kind = "mock"
 
@@ -274,6 +279,88 @@ def test_submit_client_default_does_not_run_preflight_lookup() -> None:
     assert receipt.accepted is True
     assert receipt.warnings == ("backend warning",)
     assert lookup.calls == []
+
+
+def test_submit_client_production_profile_fails_closed_when_live_lookup_unavailable() -> None:
+    backend = RecordingBackend()
+
+    receipt = SubmitClient(
+        backend,
+        entity_lookup=RaisingLookup(),
+        entity_preflight_profile="production",
+    ).submit(_payload(canonical_entity_id="ENT_STOCK_600519.SH"))
+
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.errors == (
+        "entity preflight blocked: lookup channel failed: live registry unavailable",
+    )
+    assert receipt.warnings == (
+        "entity preflight failed closed: lookup channel failed: live registry unavailable",
+    )
+
+
+def test_submit_client_dev_profile_allows_lookup_unavailable_warning() -> None:
+    backend = RecordingBackend()
+
+    receipt = SubmitClient(
+        backend,
+        entity_lookup=RaisingLookup(),
+        preflight_policy="warn",
+        entity_preflight_profile="dev",
+    ).submit(_payload(canonical_entity_id="ENT_STOCK_600519.SH"))
+
+    assert backend.calls
+    assert receipt.accepted is True
+    assert receipt.warnings == (
+        "entity preflight skipped: lookup channel failed: live registry unavailable",
+        "backend warning",
+    )
+
+
+def test_submit_client_production_profile_blocks_unresolved_ex2_refs() -> None:
+    backend = RecordingBackend()
+    payload = {
+        "ex_type": "Ex-2",
+        "subsystem_id": "subsystem-submit",
+        "produced_at": "2026-04-18T00:00:00Z",
+        "affected_entities": ["ENT_STOCK_600519.SH", "ENT_STOCK_MISSING.SZ"],
+    }
+
+    receipt = SubmitClient(
+        backend,
+        entity_lookup=RecordingLookup(resolved_refs={"ENT_STOCK_600519.SH"}),
+        entity_preflight_profile="production",
+    ).submit(payload)
+
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.errors == (
+        "entity preflight blocked unresolved reference(s): ENT_STOCK_MISSING.SZ",
+    )
+
+
+def test_submit_client_production_profile_blocks_unresolved_ex3_refs() -> None:
+    backend = RecordingBackend()
+    payload = {
+        "ex_type": "Ex-3",
+        "subsystem_id": "subsystem-submit",
+        "produced_at": "2026-04-18T00:00:00Z",
+        "source_node": "ENT_STOCK_600519.SH",
+        "target_node": "ENT_STOCK_MISSING.SZ",
+    }
+
+    receipt = SubmitClient(
+        backend,
+        entity_lookup=RecordingLookup(resolved_refs={"ENT_STOCK_600519.SH"}),
+        entity_preflight_profile="production",
+    ).submit(payload)
+
+    assert backend.calls == []
+    assert receipt.accepted is False
+    assert receipt.errors == (
+        "entity preflight blocked unresolved reference(s): ENT_STOCK_MISSING.SZ",
+    )
 
 
 def test_submit_client_already_preflighted_warn_result_is_idempotent() -> None:

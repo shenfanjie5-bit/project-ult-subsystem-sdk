@@ -195,6 +195,17 @@ def _fail(
 
 
 def _preflight_block_errors(preflight: EntityPreflightResult) -> tuple[str, ...]:
+    if not preflight.unresolved_refs:
+        if preflight.warnings:
+            return tuple(
+                warning.replace(
+                    "entity preflight failed closed:",
+                    "entity preflight blocked:",
+                    1,
+                )
+                for warning in preflight.warnings
+            )
+        return ("entity preflight blocked: lookup channel unavailable",)
     refs_text = ", ".join(preflight.unresolved_refs)
     return (f"entity preflight blocked unresolved reference(s): {refs_text}",)
 

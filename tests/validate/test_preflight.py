@@ -196,6 +196,27 @@ def test_block_preflight_without_live_lookup_documents_missing_registry_boundary
     )
 
 
+def test_block_preflight_without_live_lookup_can_fail_closed() -> None:
+    payload = _produced_payload("Ex-2") | {
+        "affected_entities": ["missing-live-entity"],
+    }
+
+    result = run_entity_preflight(
+        payload,
+        lookup=None,
+        policy="block",
+        lookup_unavailable_policy="fail",
+    )
+
+    assert result.checked is False
+    assert result.policy == "block"
+    assert result.unresolved_refs == ()
+    assert result.should_block is True
+    assert result.warnings == (
+        "entity preflight failed closed: no lookup channel provided",
+    )
+
+
 def test_run_entity_preflight_lookup_exception_degrades_to_skip() -> None:
     payload = _produced_payload() | {"entity_ref": "missing-entity"}
 
@@ -204,6 +225,23 @@ def test_run_entity_preflight_lookup_exception_degrades_to_skip() -> None:
     assert result.checked is False
     assert result.policy == "skip"
     assert result.unresolved_refs == ()
+    assert any("registry unavailable" in warning for warning in result.warnings)
+
+
+def test_run_entity_preflight_lookup_exception_can_fail_closed() -> None:
+    payload = _produced_payload() | {"entity_ref": "missing-entity"}
+
+    result = run_entity_preflight(
+        payload,
+        lookup=RaisingLookup(),
+        policy="block",
+        lookup_unavailable_policy="fail",
+    )
+
+    assert result.checked is False
+    assert result.policy == "block"
+    assert result.unresolved_refs == ()
+    assert result.should_block is True
     assert any("registry unavailable" in warning for warning in result.warnings)
 
 

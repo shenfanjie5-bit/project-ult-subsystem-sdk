@@ -6,9 +6,17 @@ from subsystem_sdk._contracts import (
     UnknownExTypeError,
 )
 from subsystem_sdk.validate.engine import validate_payload
+from subsystem_sdk.validate.entity_registry import (
+    EntityPreflightProfile,
+    EntityPreflightWiring,
+    EntityRegistryLookupUnavailableError,
+    LiveEntityRegistryLookup,
+    build_entity_preflight_wiring,
+)
 from subsystem_sdk.validate.preflight import (
     EntityPreflightResult,
     EntityRegistryLookup,
+    LookupUnavailablePolicy,
     PreflightPolicy,
     run_entity_preflight,
 )
@@ -37,9 +45,14 @@ __all__ = [
     "INGEST_METADATA_FIELDS",
     "PRODUCER_OWNED_REQUIRED",
     "Ex0SemanticError",
+    "EntityPreflightProfile",
     "EntityPreflightResult",
+    "EntityPreflightWiring",
     "EntityRegistryLookup",
+    "EntityRegistryLookupUnavailableError",
     "IngestMetadataLeakError",
+    "LiveEntityRegistryLookup",
+    "LookupUnavailablePolicy",
     "MissingProducerFieldError",
     "PreflightPolicy",
     "SemanticsError",
@@ -50,6 +63,7 @@ __all__ = [
     "assert_ex0_semantic",
     "assert_no_ingest_metadata",
     "assert_producer_only",
+    "build_entity_preflight_wiring",
     "richer_validation_report",
     "run_entity_preflight",
     "validate_payload",
