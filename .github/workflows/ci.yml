@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install (full(ci) lane — all extras: dev + contracts-schemas + shared-fixtures)
+      - name: "Install (full(ci) lane — all extras: dev + contracts-schemas + shared-fixtures)"
         run: pip install -e ".[dev,contracts-schemas,shared-fixtures]"
       - name: Tests
         run: python -m pytest
