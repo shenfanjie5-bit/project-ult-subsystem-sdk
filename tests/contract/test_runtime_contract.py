@@ -23,7 +23,6 @@ from subsystem_sdk.heartbeat import HeartbeatClient, send_heartbeat
 from subsystem_sdk.submit import (
     BACKEND_KINDS,
     RESERVED_PRIVATE_KEYS,
-    BackendKind,
     SubmitClient,
     SubmitReceipt,
     submit,

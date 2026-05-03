@@ -121,7 +121,7 @@ class TestFixturesPackageRoundTrip:
 
     def test_iter_cases_yields_at_least_one_case_ref(self) -> None:
         cases = list(iter_cases(_PACK))
-        assert cases, f"event_cases pack has no cases at all"
+        assert cases, "event_cases pack has no cases at all"
         # Every case_id should be a non-empty string.
         for c in cases:
             assert isinstance(c.case_id, str) and c.case_id

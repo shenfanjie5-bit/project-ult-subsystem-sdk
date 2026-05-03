@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Mapping
 from typing import Any, Final
 
 from subsystem_sdk import __version__ as _SUBSYSTEM_SDK_VERSION

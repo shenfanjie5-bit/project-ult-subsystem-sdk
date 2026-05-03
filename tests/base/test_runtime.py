@@ -16,7 +16,7 @@ from subsystem_sdk.base.runtime import (
 )
 from subsystem_sdk.heartbeat import HeartbeatClient, send_heartbeat
 from subsystem_sdk.submit import SubmitClient, submit
-from subsystem_sdk.validate import EX0_SEMANTIC, ValidationResult
+from subsystem_sdk.validate import ValidationResult
 
 
 class RecordingHeartbeatBackend:

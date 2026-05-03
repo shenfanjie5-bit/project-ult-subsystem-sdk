@@ -51,7 +51,7 @@ def _resolve_real_contracts_ex_schemas() -> dict[str, type]:
         pytest.fail(
             "SDK gateway could not resolve every Ex schema against installed "
             "contracts (contracts-schemas extra was found, so this is a real "
-            f"cross-repo regression, NOT an env issue):\n  - "
+            "cross-repo regression, NOT an env issue):\n  - "
             + "\n  - ".join(failures)
         )
     return resolved
