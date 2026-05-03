@@ -7,8 +7,13 @@ from typing import Any, Final, Literal, Mapping, Sequence, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-BackendKind = Literal["lite_pg", "full_kafka", "mock"]
-BACKEND_KINDS: Final[tuple[BackendKind, ...]] = ("lite_pg", "full_kafka", "mock")
+BackendKind = Literal["lite_pg", "full_kafka", "data_platform_queue", "mock"]
+BACKEND_KINDS: Final[tuple[BackendKind, ...]] = (
+    "lite_pg",
+    "full_kafka",
+    "data_platform_queue",
+    "mock",
+)
 
 if BACKEND_KINDS != get_args(BackendKind):  # pragma: no cover - import-time guard.
     raise RuntimeError("BACKEND_KINDS must match BackendKind")
@@ -22,6 +27,11 @@ RESERVED_PRIVATE_KEYS: Final[frozenset[str]] = frozenset(
         "kafka_topic",
         "kafka_offset",
         "kafka_partition",
+        "candidate_id",
+        "ingest_seq",
+        "submitted_at",
+        "validation_status",
+        "rejection_reason",
     }
 )
 _BACKEND_RECEIPT_KEYS: Final[frozenset[str]] = frozenset(

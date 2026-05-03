@@ -16,6 +16,10 @@ from subsystem_sdk.validate.result import ValidationResult
 
 BackendDispatch = Callable[[Mapping[str, Any]], Mapping[str, Any] | SubmitReceipt]
 BoundaryCheck = Callable[[Mapping[str, Any], ValidationResult], Sequence[str]]
+DispatchPayloadPreparer = Callable[
+    [Mapping[str, Any], ValidationResult],
+    Mapping[str, Any],
+]
 ValidationEnricher = Callable[[Mapping[str, Any], ValidationResult], ValidationResult]
 Validator = Callable[[Mapping[str, Any]], ValidationResult]
 
@@ -61,6 +65,7 @@ def validate_then_dispatch(
     dispatch: BackendDispatch,
     enrich_validation: ValidationEnricher | None = None,
     boundary_check: BoundaryCheck | None = None,
+    prepare_dispatch_payload: DispatchPayloadPreparer | None = None,
 ) -> SubmitReceipt:
     """Validate a payload, optionally enforce policy, then normalize receipt."""
 
@@ -96,6 +101,18 @@ def validate_then_dispatch(
     # this strip, backends serialize the SDK envelope to the wire and
     # Layer B ingest rejects the payload (codex stage-2.7 review #2 P1).
     wire_payload = strip_sdk_envelope(payload)
+    if prepare_dispatch_payload is not None:
+        try:
+            wire_payload = prepare_dispatch_payload(wire_payload, validation)
+        except ValueError as exc:
+            return normalize_receipt(
+                accepted=False,
+                backend_kind=backend_kind,
+                transport_ref=None,
+                validator_version=validation.schema_version,
+                warnings=validation.warnings,
+                errors=(str(exc),),
+            )
 
     backend_receipt = normalize_backend_receipt(
         dispatch(wire_payload),

@@ -87,6 +87,7 @@ EXPECTED_EXPORTS = {
     ],
     "backends": [
         "build_submit_backend",
+        "DataPlatformQueueSubmitBackend",
         "KafkaBrokerAck",
         "KafkaCompatibleSubmitBackend",
         "KafkaProducerProtocol",
@@ -94,6 +95,7 @@ EXPECTED_EXPORTS = {
         "PgSubmitBackend",
         "SubmitBackendHeartbeatAdapter",
         "SubmitBackendConfig",
+        "SubmitCandidateFunc",
     ],
     "fixtures": [
         "ContractExample",

@@ -204,6 +204,35 @@ def test_load_submit_backend_config_from_json(tmp_path: Path) -> None:
     assert config.queue_table == "submit_queue"
 
 
+def test_load_submit_backend_config_accepts_data_platform_queue(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "backend.toml"
+    config_path.write_text('backend_kind = "data_platform_queue"\n', encoding="utf-8")
+
+    config = load_submit_backend_config(config_path)
+
+    assert config.backend_kind == "data_platform_queue"
+
+
+@pytest.mark.parametrize("field", ["dsn", "queue_table", "topic"])
+def test_load_submit_backend_config_rejects_data_platform_queue_storage_fields(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    config_path = tmp_path / "backend.toml"
+    config_path.write_text(
+        f"""
+backend_kind = "data_platform_queue"
+{field} = "not-owned-by-sdk"
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="data_platform_queue"):
+        load_submit_backend_config(config_path)
+
+
 def test_load_submit_backend_config_rejects_unsupported_suffix(
     tmp_path: Path,
 ) -> None:

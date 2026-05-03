@@ -134,13 +134,16 @@ class TestLiteFullSubmitSignatureParity:
         assert [p.name for p in params] == ["payload"]
         assert params[0].default is inspect.Parameter.empty
 
-    def test_lite_and_full_backend_classes_share_submit_signature(self) -> None:
-        # Both PgSubmitBackend (Lite) and KafkaCompatibleSubmitBackend (Full)
+    def test_submit_backend_classes_share_submit_signature(self) -> None:
+        # PgSubmitBackend, KafkaCompatibleSubmitBackend, and
+        # DataPlatformQueueSubmitBackend must implement SubmitBackendInterface.submit
         # must implement SubmitBackendInterface.submit with the same shape:
-        # `(self, payload) -> Mapping | SubmitReceipt`. If a future Full
-        # backend takes extra knobs, the Lite/Full parity invariant fires.
+        # `(self, payload) -> Mapping | SubmitReceipt`.
         import inspect
 
+        from subsystem_sdk.backends.data_platform_queue import (
+            DataPlatformQueueSubmitBackend,
+        )
         from subsystem_sdk.backends.full_kafka import (
             KafkaCompatibleSubmitBackend,
         )
@@ -148,6 +151,7 @@ class TestLiteFullSubmitSignatureParity:
 
         lite_sig = inspect.signature(PgSubmitBackend.submit)
         full_sig = inspect.signature(KafkaCompatibleSubmitBackend.submit)
+        data_platform_sig = inspect.signature(DataPlatformQueueSubmitBackend.submit)
 
         # Strip self for comparison.
         def names_and_kinds(sig: inspect.Signature) -> list[tuple[str, object]]:
@@ -157,10 +161,9 @@ class TestLiteFullSubmitSignatureParity:
                 if name != "self"
             ]
 
-        assert names_and_kinds(lite_sig) == names_and_kinds(full_sig), (
-            f"Lite/Full submit signatures diverged: "
-            f"lite={names_and_kinds(lite_sig)} vs full={names_and_kinds(full_sig)}"
-        )
+        expected = names_and_kinds(lite_sig)
+        assert expected == names_and_kinds(full_sig)
+        assert expected == names_and_kinds(data_platform_sig)
 
     def test_submit_client_submit_signature_independent_of_backend(self) -> None:
         # SubmitClient.submit has the exact same shape (self, payload)
@@ -188,6 +191,8 @@ class TestNoBackendPrivateLeakInReceipts:
         # Anchor a minimum set; future backends may add more, but these
         # must not be removed silently.
         for required in (
+            "candidate_id",
+            "ingest_seq",
             "pg_queue_id",
             "pg_table",
             "queue_table",
@@ -195,6 +200,9 @@ class TestNoBackendPrivateLeakInReceipts:
             "kafka_topic",
             "kafka_offset",
             "kafka_partition",
+            "rejection_reason",
+            "submitted_at",
+            "validation_status",
         ):
             assert required in RESERVED_PRIVATE_KEYS, (
                 f"RESERVED_PRIVATE_KEYS dropped {required!r}; "
