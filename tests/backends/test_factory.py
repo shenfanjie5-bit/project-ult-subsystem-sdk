@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from subsystem_sdk.backends import (
+    DataPlatformQueueSubmitBackend,
     KafkaBrokerAck,
     KafkaCompatibleSubmitBackend,
     MockSubmitBackend,
@@ -123,6 +124,40 @@ def test_build_submit_backend_returns_full_kafka_backend() -> None:
     ]
     assert receipt["accepted"] is True
     assert str(receipt["transport_ref"]).startswith("kafka:")
+
+
+def test_build_submit_backend_returns_data_platform_queue_backend() -> None:
+    calls: list[dict[str, Any]] = []
+
+    def submit_candidate(payload):
+        calls.append(dict(payload))
+        return type("Candidate", (), {"id": 777})()
+
+    config = SubmitBackendConfig(backend_kind="data_platform_queue")
+
+    backend = build_submit_backend(
+        config,
+        data_platform_submit_candidate=submit_candidate,
+    )
+    receipt = backend.submit(
+        {
+            "payload_type": "Ex-1",
+            "submitted_by": "subsystem-a",
+            "subsystem_id": "subsystem-a",
+        }
+    )
+
+    assert isinstance(backend, DataPlatformQueueSubmitBackend)
+    assert backend.backend_kind == "data_platform_queue"
+    assert calls == [
+        {
+            "payload_type": "Ex-1",
+            "submitted_by": "subsystem-a",
+            "subsystem_id": "subsystem-a",
+        }
+    ]
+    assert receipt["accepted"] is True
+    assert receipt["transport_ref"] == "777"
 
 
 def test_build_submit_backend_full_requires_kafka_producer() -> None:

@@ -1,6 +1,10 @@
 """Section 14 backends package: Lite and Full backend adapters."""
 
 from subsystem_sdk.backends.config import SubmitBackendConfig
+from subsystem_sdk.backends.data_platform_queue import (
+    DataPlatformQueueSubmitBackend,
+    SubmitCandidateFunc,
+)
 from subsystem_sdk.backends.full_kafka import (
     KafkaBrokerAck,
     KafkaCompatibleSubmitBackend,
@@ -13,6 +17,7 @@ from subsystem_sdk.backends.mock import MockSubmitBackend
 
 __all__ = [
     "build_submit_backend",
+    "DataPlatformQueueSubmitBackend",
     "KafkaBrokerAck",
     "KafkaCompatibleSubmitBackend",
     "KafkaProducerProtocol",
@@ -20,4 +25,5 @@ __all__ = [
     "PgSubmitBackend",
     "SubmitBackendHeartbeatAdapter",
     "SubmitBackendConfig",
+    "SubmitCandidateFunc",
 ]

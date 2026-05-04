@@ -100,6 +100,11 @@ class SubmitClient:
             validator=self._validator,
             dispatch=self._backend.submit,
             enrich_validation=self._enrich_validation,
+            prepare_dispatch_payload=getattr(
+                self._backend,
+                "prepare_dispatch_payload",
+                None,
+            ),
         )
 
     def _enrich_validation(

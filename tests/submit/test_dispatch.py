@@ -112,6 +112,78 @@ def test_dispatch_applies_boundary_check_before_backend_call() -> None:
     assert receipt.errors == ("heartbeat payload semantic mismatch",)
 
 
+def test_dispatch_prepares_payload_after_envelope_strip_before_backend_call() -> None:
+    calls: list[Mapping[str, Any]] = []
+
+    def validator(payload: Mapping[str, Any]) -> ValidationResult:
+        return ValidationResult.ok(ex_type="Ex-3", schema_version="contracts-v5")
+
+    def prepare(
+        wire_payload: Mapping[str, Any],
+        validation: ValidationResult,
+    ) -> Mapping[str, Any]:
+        assert wire_payload == {"subsystem_id": "subsystem-a"}
+        assert validation.ex_type == "Ex-3"
+        return {"payload_type": validation.ex_type, **dict(wire_payload)}
+
+    def dispatch(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        calls.append(payload)
+        return {"accepted": True, "transport_ref": "candidate-1"}
+
+    receipt = validate_then_dispatch(
+        {
+            "ex_type": "Ex-3",
+            "produced_at": "2026-01-01T00:00:00Z",
+            "subsystem_id": "subsystem-a",
+        },
+        backend_kind="data_platform_queue",
+        validator=validator,
+        dispatch=dispatch,
+        prepare_dispatch_payload=prepare,
+    )
+
+    assert calls == [{"payload_type": "Ex-3", "subsystem_id": "subsystem-a"}]
+    assert receipt.accepted is True
+    assert receipt.backend_kind == "data_platform_queue"
+    assert receipt.transport_ref == "candidate-1"
+
+
+def test_dispatch_preparer_value_error_returns_rejected_receipt() -> None:
+    calls: list[Mapping[str, Any]] = []
+
+    def validator(payload: Mapping[str, Any]) -> ValidationResult:
+        return ValidationResult.ok(
+            ex_type="Ex-2",
+            schema_version="contracts-v6",
+            warnings=("validator warning",),
+        )
+
+    def prepare(
+        wire_payload: Mapping[str, Any],
+        validation: ValidationResult,
+    ) -> Mapping[str, Any]:
+        raise ValueError("missing subsystem_id")
+
+    def dispatch(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        calls.append(payload)
+        return {"accepted": True}
+
+    receipt = validate_then_dispatch(
+        {"ex_type": "Ex-2"},
+        backend_kind="data_platform_queue",
+        validator=validator,
+        dispatch=dispatch,
+        prepare_dispatch_payload=prepare,
+    )
+
+    assert calls == []
+    assert receipt.accepted is False
+    assert receipt.backend_kind == "data_platform_queue"
+    assert receipt.validator_version == "contracts-v6"
+    assert receipt.warnings == ("validator warning",)
+    assert receipt.errors == ("missing subsystem_id",)
+
+
 def test_dispatch_rejects_backend_private_fields_before_public_receipt() -> None:
     def validator(payload: Mapping[str, Any]) -> ValidationResult:
         return ValidationResult.ok(ex_type="Ex-2", schema_version="contracts-v4")

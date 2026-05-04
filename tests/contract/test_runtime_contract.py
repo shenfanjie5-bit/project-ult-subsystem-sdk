@@ -23,7 +23,6 @@ from subsystem_sdk.heartbeat import HeartbeatClient, send_heartbeat
 from subsystem_sdk.submit import (
     BACKEND_KINDS,
     RESERVED_PRIVATE_KEYS,
-    BackendKind,
     SubmitClient,
     SubmitReceipt,
     submit,
@@ -167,10 +166,13 @@ class TestSubmitReceiptContract:
     def test_receipt_is_frozen(self) -> None:
         assert SubmitReceipt.model_config.get("frozen") is True
 
-    def test_backend_kinds_are_exactly_three(self) -> None:
-        # Lite (lite_pg) + Full (full_kafka) + mock — adding a 4th would
-        # be a Layer B contract change requiring contracts version bump.
-        assert tuple(BACKEND_KINDS) == ("lite_pg", "full_kafka", "mock")
+    def test_backend_kinds_are_expected_transport_set(self) -> None:
+        assert tuple(BACKEND_KINDS) == (
+            "lite_pg",
+            "full_kafka",
+            "data_platform_queue",
+            "mock",
+        )
         # BackendKind is a Literal; runtime check happens via the Literal.
         # We can't introspect Literal directly here without typing tricks;
         # the union of values is asserted via BACKEND_KINDS.

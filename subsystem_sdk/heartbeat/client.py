@@ -68,6 +68,11 @@ class HeartbeatClient:
             validator=self._validator,
             dispatch=self._backend.send,
             boundary_check=_heartbeat_boundary_errors,
+            prepare_dispatch_payload=getattr(
+                self._backend,
+                "prepare_dispatch_payload",
+                None,
+            ),
         )
 
 

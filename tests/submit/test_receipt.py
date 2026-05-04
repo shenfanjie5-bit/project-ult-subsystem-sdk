@@ -115,13 +115,18 @@ def test_assert_no_private_leak_allows_public_keys() -> None:
 def test_reserved_private_keys_are_fixed() -> None:
     assert RESERVED_PRIVATE_KEYS == frozenset(
         {
+            "candidate_id",
+            "ingest_seq",
+            "kafka_offset",
+            "kafka_partition",
+            "kafka_topic",
             "pg_queue_id",
             "pg_table",
             "queue_table",
+            "rejection_reason",
             "sql",
-            "kafka_topic",
-            "kafka_offset",
-            "kafka_partition",
+            "submitted_at",
+            "validation_status",
         }
     )
 

@@ -25,13 +25,13 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Mapping
 from typing import Any, Final
 
 from subsystem_sdk import __version__ as _SUBSYSTEM_SDK_VERSION
 from subsystem_sdk.submit.receipt import (
     BACKEND_KINDS,
     RESERVED_PRIVATE_KEYS,
+    SubmitReceipt,
 )
 from subsystem_sdk.validate.semantics import (
     EX0_SEMANTIC,
@@ -347,19 +347,22 @@ class _SmokeHook:
             )
 
         # 5. Receipt-shape sanity: RESERVED_PRIVATE_KEYS must be non-empty
-        #    and disjoint from INGEST_METADATA_FIELDS (different boundary
-        #    layers — backend-private leak vs producer-side ingest leak).
+        #    and disjoint from the public receipt fields. Some data-platform
+        #    queue metadata (e.g. ingest_seq) is both ingest-owned and backend
+        #    private at the receipt boundary, so INGEST_METADATA_FIELDS overlap
+        #    is allowed as long as those fields never enter SubmitReceipt.
         if not RESERVED_PRIVATE_KEYS:
             return build_result(
                 passed=False,
                 failure_reason="RESERVED_PRIVATE_KEYS empty",
             )
-        if RESERVED_PRIVATE_KEYS & INGEST_METADATA_FIELDS:
+        public_receipt_fields = set(SubmitReceipt.model_fields)
+        if RESERVED_PRIVATE_KEYS & public_receipt_fields:
             return build_result(
                 passed=False,
                 failure_reason=(
-                    "RESERVED_PRIVATE_KEYS overlaps INGEST_METADATA_FIELDS; "
-                    "two distinct boundary layers must stay disjoint"
+                    "RESERVED_PRIVATE_KEYS overlaps SubmitReceipt fields; "
+                    "backend-private fields would leak"
                 ),
             )
 

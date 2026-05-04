@@ -156,8 +156,12 @@ class TestEntrypointBehaviour:
         assert "contract_version" in result
         # Must include 4 supported Ex types in stable order.
         assert result["supported_ex_types"] == ["Ex-0", "Ex-1", "Ex-2", "Ex-3"]
-        # Must list 3 backend kinds (lite_pg, full_kafka, mock).
-        assert set(result["backend_kinds"]) == {"lite_pg", "full_kafka", "mock"}
+        assert set(result["backend_kinds"]) == {
+            "lite_pg",
+            "full_kafka",
+            "data_platform_queue",
+            "mock",
+        }
         assert result["ex0_semantic"] == "metadata_or_heartbeat"
 
     def test_public_entrypoints_validate_against_assembly_models(self) -> None:

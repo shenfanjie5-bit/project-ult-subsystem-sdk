@@ -36,6 +36,17 @@ class SubmitBackendConfig(BaseModel):
                 "SubmitBackendConfig.topic is required when "
                 "backend_kind='full_kafka'"
             )
+        if self.backend_kind == "data_platform_queue":
+            forbidden = [
+                field
+                for field in ("dsn", "queue_table", "topic")
+                if _has_text(getattr(self, field))
+            ]
+            if forbidden:
+                raise ValueError(
+                    "SubmitBackendConfig data_platform_queue must not set "
+                    f"{', '.join(forbidden)}; data-platform owns queue storage"
+                )
         return self
 
 
