@@ -121,7 +121,8 @@ def test_version() -> None:
     # for the cross-repo reconciliation that lets downstream subsystems
     # (announcement / news) use producer_context + Ex1.evidence + Ex2
     # affected_sectors empty list. No envelope-strip behavior change.
-    assert subsystem_sdk.__version__ == "0.1.2"
+    # 0.1.3 - release data-platform queue backend for downstream consumers.
+    assert subsystem_sdk.__version__ == "0.1.3"
 
 
 def test_root_package_exports_preflight_api() -> None:
