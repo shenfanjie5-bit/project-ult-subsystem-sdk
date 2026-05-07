@@ -122,7 +122,8 @@ def test_version() -> None:
     # (announcement / news) use producer_context + Ex1.evidence + Ex2
     # affected_sectors empty list. No envelope-strip behavior change.
     # 0.1.3 - release data-platform queue backend for downstream consumers.
-    assert subsystem_sdk.__version__ == "0.1.3"
+    # 0.1.4 - release idempotent data-platform queue submit API.
+    assert subsystem_sdk.__version__ == "0.1.4"
 
 
 def test_root_package_exports_preflight_api() -> None:
