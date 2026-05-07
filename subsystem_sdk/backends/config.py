@@ -21,6 +21,7 @@ class SubmitBackendConfig(BaseModel):
     topic: str | None = None
     client_id: str | None = None
     delivery_timeout_ms: int = Field(default=1000, ge=1)
+    data_platform_idempotent_required: bool = False
 
     @model_validator(mode="after")
     def _validate_backend_fields(self) -> Self:
@@ -47,6 +48,11 @@ class SubmitBackendConfig(BaseModel):
                     "SubmitBackendConfig data_platform_queue must not set "
                     f"{', '.join(forbidden)}; data-platform owns queue storage"
                 )
+        elif self.data_platform_idempotent_required:
+            raise ValueError(
+                "SubmitBackendConfig data_platform_idempotent_required is only "
+                "valid when backend_kind='data_platform_queue'"
+            )
         return self
 
 

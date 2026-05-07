@@ -62,6 +62,54 @@ def test_submit_client_bridges_ex_payloads_to_data_platform_queue_envelope() -> 
     ]
 
 
+def test_submit_client_can_require_idempotent_data_platform_submit() -> None:
+    legacy_calls: list[dict[str, Any]] = []
+    idempotent_calls: list[dict[str, Any]] = []
+
+    def submit_candidate(payload):
+        legacy_calls.append(dict(payload))
+        return SimpleNamespace(id="legacy-candidate")
+
+    def submit_candidate_idempotent(payload):
+        idempotent_calls.append(dict(payload))
+        return SimpleNamespace(candidate_id=44, replayed=True)
+
+    def validator(payload):
+        return ValidationResult.ok(ex_type="Ex-3", schema_version="contracts-v-test")
+
+    backend = DataPlatformQueueSubmitBackend(
+        submit_candidate_func=submit_candidate,
+        submit_candidate_idempotent_func=submit_candidate_idempotent,
+        idempotent_required=True,
+    )
+    client = SubmitClient(backend, validator=validator)
+
+    receipt = client.submit(
+        {
+            "ex_type": "Ex-3",
+            "produced_at": "2026-05-03T00:00:00Z",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "holdings-delta-1",
+            "payload_value": "Ex-3",
+        }
+    )
+
+    assert receipt.accepted is True
+    assert receipt.backend_kind == "data_platform_queue"
+    assert receipt.transport_ref == "44"
+    assert receipt.warnings == ("data_platform_queue idempotent replay",)
+    assert legacy_calls == []
+    assert idempotent_calls == [
+        {
+            "payload_type": "Ex-3",
+            "submitted_by": "subsystem-holdings",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "holdings-delta-1",
+            "payload_value": "Ex-3",
+        }
+    ]
+
+
 def test_heartbeat_client_bridges_ex0_to_data_platform_queue_envelope() -> None:
     calls: list[dict[str, Any]] = []
 

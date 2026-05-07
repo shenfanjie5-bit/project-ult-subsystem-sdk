@@ -8,6 +8,7 @@ from typing import Any, assert_never
 from subsystem_sdk.backends.config import SubmitBackendConfig
 from subsystem_sdk.backends.data_platform_queue import (
     DataPlatformQueueSubmitBackend,
+    SubmitCandidateIdempotentFunc,
     SubmitCandidateFunc,
 )
 from subsystem_sdk.backends.full_kafka import (
@@ -25,6 +26,9 @@ def build_submit_backend(
     pg_connection_factory: Callable[[SubmitBackendConfig], Any] | None = None,
     kafka_producer: KafkaProducerProtocol | None = None,
     data_platform_submit_candidate: SubmitCandidateFunc | None = None,
+    data_platform_submit_candidate_idempotent: (
+        SubmitCandidateIdempotentFunc | None
+    ) = None,
     mock_backend: MockSubmitBackend | None = None,
 ) -> SubmitBackendInterface:
     """Build the configured submit backend without exposing transport details."""
@@ -44,6 +48,8 @@ def build_submit_backend(
     if config.backend_kind == "data_platform_queue":
         return DataPlatformQueueSubmitBackend(
             submit_candidate_func=data_platform_submit_candidate,
+            submit_candidate_idempotent_func=data_platform_submit_candidate_idempotent,
+            idempotent_required=config.data_platform_idempotent_required,
         )
 
     if config.backend_kind == "mock":

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+import subsystem_sdk.backends.data_platform_queue as data_platform_queue_module
 from subsystem_sdk.backends import DataPlatformQueueSubmitBackend
 from subsystem_sdk.submit import normalize_backend_receipt
 from subsystem_sdk.validate import ValidationResult
@@ -123,6 +125,147 @@ def test_data_platform_queue_submit_accepts_mapping_candidate_item() -> None:
 
     assert receipt["accepted"] is True
     assert receipt["transport_ref"] == "candidate-77"
+
+
+def test_data_platform_queue_idempotent_required_uses_idempotent_submit() -> None:
+    legacy_calls: list[dict[str, Any]] = []
+    idempotent_calls: list[dict[str, Any]] = []
+
+    def submit_candidate(payload):
+        legacy_calls.append(dict(payload))
+        return SimpleNamespace(id="legacy-candidate")
+
+    def submit_candidate_idempotent(payload):
+        idempotent_calls.append(dict(payload))
+        return SimpleNamespace(candidate_id=123, replayed=False)
+
+    backend = DataPlatformQueueSubmitBackend(
+        submit_candidate_func=submit_candidate,
+        submit_candidate_idempotent_func=submit_candidate_idempotent,
+        idempotent_required=True,
+    )
+    receipt = backend.submit(
+        {
+            "payload_type": "Ex-3",
+            "submitted_by": "subsystem-holdings",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "delta-1",
+        }
+    )
+
+    assert legacy_calls == []
+    assert idempotent_calls == [
+        {
+            "payload_type": "Ex-3",
+            "submitted_by": "subsystem-holdings",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "delta-1",
+        }
+    ]
+    assert receipt == {
+        "accepted": True,
+        "transport_ref": "123",
+        "warnings": (),
+        "errors": (),
+    }
+
+
+def test_data_platform_queue_idempotent_required_missing_api_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    legacy_calls: list[dict[str, Any]] = []
+
+    def submit_candidate(payload):
+        legacy_calls.append(dict(payload))
+        return SimpleNamespace(id="legacy-candidate")
+
+    monkeypatch.setattr(
+        data_platform_queue_module,
+        "import_module",
+        lambda name: SimpleNamespace(submit_candidate=submit_candidate),
+    )
+    backend = DataPlatformQueueSubmitBackend(
+        submit_candidate_func=submit_candidate,
+        idempotent_required=True,
+    )
+
+    receipt = backend.submit(
+        {
+            "payload_type": "Ex-3",
+            "submitted_by": "subsystem-holdings",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "delta-1",
+        }
+    )
+
+    assert legacy_calls == []
+    assert receipt == {
+        "accepted": False,
+        "transport_ref": None,
+        "warnings": (),
+        "errors": ("data_platform_queue submit failed",),
+    }
+
+
+def test_data_platform_queue_idempotent_safe_receipt_maps_without_private_leak() -> None:
+    class SafeReceipt:
+        candidate_id = 321
+        replayed = True
+
+        def as_public_dict(self) -> dict[str, Any]:
+            return {
+                "candidate_id": self.candidate_id,
+                "payload_type": "Ex-3",
+                "submitted_by": "subsystem-holdings",
+                "submitted_at": datetime.now(UTC).isoformat(),
+                "ingest_seq": 456,
+                "validation_status": "pending",
+                "rejection_reason": None,
+                "replayed": self.replayed,
+                "payload": {"provider_payload": "must-not-leak"},
+                "raw_payload_path": "/tmp/private.json",
+            }
+
+    backend = DataPlatformQueueSubmitBackend(
+        submit_candidate_idempotent_func=lambda payload: SafeReceipt(),
+        idempotent_required=True,
+    )
+
+    receipt = backend.submit(
+        {
+            "payload_type": "Ex-3",
+            "submitted_by": "subsystem-holdings",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "delta-1",
+        }
+    )
+
+    assert receipt == {
+        "accepted": True,
+        "transport_ref": "321",
+        "warnings": ("data_platform_queue idempotent replay",),
+        "errors": (),
+    }
+    for private_key in (
+        "candidate_id",
+        "payload",
+        "provider_payload",
+        "raw_payload_path",
+        "ingest_seq",
+        "submitted_at",
+        "validation_status",
+        "rejection_reason",
+        "replayed",
+    ):
+        assert private_key not in receipt
+
+    public = normalize_backend_receipt(
+        receipt,
+        backend_kind="data_platform_queue",
+        validator_version="contracts-v1",
+    )
+    assert public.transport_ref == "321"
+    assert public.warnings == ("data_platform_queue idempotent replay",)
 
 
 def test_data_platform_queue_submit_hides_backend_failure_details() -> None:

@@ -160,6 +160,50 @@ def test_build_submit_backend_returns_data_platform_queue_backend() -> None:
     assert receipt["transport_ref"] == "777"
 
 
+def test_build_submit_backend_passes_data_platform_idempotent_requirement() -> None:
+    legacy_calls: list[dict[str, Any]] = []
+    idempotent_calls: list[dict[str, Any]] = []
+
+    def submit_candidate(payload):
+        legacy_calls.append(dict(payload))
+        return type("Candidate", (), {"id": 777})()
+
+    def submit_candidate_idempotent(payload):
+        idempotent_calls.append(dict(payload))
+        return type("CandidateReceipt", (), {"candidate_id": 888})()
+
+    config = SubmitBackendConfig(
+        backend_kind="data_platform_queue",
+        data_platform_idempotent_required=True,
+    )
+
+    backend = build_submit_backend(
+        config,
+        data_platform_submit_candidate=submit_candidate,
+        data_platform_submit_candidate_idempotent=submit_candidate_idempotent,
+    )
+    receipt = backend.submit(
+        {
+            "payload_type": "Ex-3",
+            "submitted_by": "subsystem-holdings",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "holdings-delta-1",
+        }
+    )
+
+    assert legacy_calls == []
+    assert idempotent_calls == [
+        {
+            "payload_type": "Ex-3",
+            "submitted_by": "subsystem-holdings",
+            "subsystem_id": "subsystem-holdings",
+            "delta_id": "holdings-delta-1",
+        }
+    ]
+    assert receipt["accepted"] is True
+    assert receipt["transport_ref"] == "888"
+
+
 def test_build_submit_backend_full_requires_kafka_producer() -> None:
     config = SubmitBackendConfig(
         backend_kind="full_kafka",
