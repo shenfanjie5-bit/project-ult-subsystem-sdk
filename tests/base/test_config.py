@@ -215,6 +215,44 @@ def test_load_submit_backend_config_accepts_data_platform_queue(
     assert config.backend_kind == "data_platform_queue"
 
 
+def test_load_submit_backend_config_accepts_data_platform_idempotent_required(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "backend.toml"
+    config_path.write_text(
+        """
+backend_kind = "data_platform_queue"
+data_platform_idempotent_required = true
+""",
+        encoding="utf-8",
+    )
+
+    config = load_submit_backend_config(config_path)
+
+    assert config.backend_kind == "data_platform_queue"
+    assert config.data_platform_idempotent_required is True
+
+
+@pytest.mark.parametrize("backend_kind", ["lite_pg", "full_kafka", "mock"])
+def test_load_submit_backend_config_rejects_data_platform_idempotent_for_other_backends(
+    tmp_path: Path,
+    backend_kind: str,
+) -> None:
+    config_path = tmp_path / "backend.toml"
+    extra = 'topic = "candidate-events"' if backend_kind == "full_kafka" else ""
+    config_path.write_text(
+        f"""
+backend_kind = "{backend_kind}"
+data_platform_idempotent_required = true
+{extra}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="data_platform_idempotent_required"):
+        load_submit_backend_config(config_path)
+
+
 @pytest.mark.parametrize("field", ["dsn", "queue_table", "topic"])
 def test_load_submit_backend_config_rejects_data_platform_queue_storage_fields(
     tmp_path: Path,
